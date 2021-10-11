@@ -22,16 +22,24 @@ maintainer:         lba2138@columbia.edu
 extra-source-files: CHANGELOG.md
 
 executable databass
-    main-is:          Main.hs
+  main-is:          Main.hs
 
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
+  -- Modules included in this executable, other than Main.
+  other-modules:
+    QueryLanguage
+    QueryLanguage.Fancy
+    QueryLanguage.Fancy2
 
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-    build-depends:    base >=4.13.0.0 && < 5
-                    , b-tree
-                    , pipes
-                    , relude
-    hs-source-dirs:   app
-    default-language: Haskell2010
+  ghc-options:      -Wall -fenable-th-splice-warnings
+
+  -- LANGUAGE extensions used by modules in this package.
+  -- other-extensions:
+  build-depends:
+    , b-tree
+    , base             ^>=4.15
+    , pipes
+    , relude
+    , singletons-base
+
+  hs-source-dirs:   app
+  default-language: Haskell2010
