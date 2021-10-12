@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -44,8 +45,6 @@ module QueryLanguage.Fancy2 where
 -- VAR P REAL RELATION  { P# P#, PNAME NAME, COLOR COLOR, WEIGHT WEIGHT, CITY CHAR } KEY { P# } ;
 -- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
 
--- import Prelude.Singletons
-
 import Data.Map.Strict qualified as M
 import Data.Singletons.Base.TypeError
 import GHC.TypeLits.Singletons
@@ -89,7 +88,7 @@ instance (Ord value, Ord (Tuple rest)) => Ord (Tuple (Attribute label value ': r
   compare (Attr x ::: xs) (Attr y ::: ys) = compare x y <> compare xs ys
 
 data Relation heading key where
-  Rel :: Relude.Map (Lookup key heading) (Remove key heading) -> Relation heading key
+  Rel :: Map (Lookup key heading) (Remove key heading) -> Relation heading key
 
 instance
   (Typeable heading, Show (Remove key heading), Show (Lookup key heading)) =>
@@ -147,8 +146,17 @@ type family RenameHeading a b heading where
 rename :: Relation heading key -> As a b -> Relation (RenameHeading a b heading) (RenameKey a b key)
 rename (Rel m) _ = Rel (unsafeCoerce m)
 
--- restrict :: Relation heading key -> (heading -> Bool) -> Relation heading key
--- restrict (Rel m) pred =
+-- restrict :: forall key heading . Relation heading key -> (heading -> Bool) -> Relation heading key
+-- restrict (Rel (m :: Map (Lookup key heading) (Remove key heading))) f =
+--   Rel (M.filterWithKey (\k v -> f $ assembleHeading k v) m)
+  -- where
+  --   assembleHeading TNil v = v
+
+-- type family AssembleHeading k v heading where
+--   AssembleHeading (k ': ks) (v ': vs) (k ': hs) = TCons k (AssembleHeading ks (v ': vs) hs)
+
+-- assembleHeading :: Lookup key heading -> Remove key heading -> heading
+-- assembleHeading _ _ = _
 
 -- data Query db result where
 --   Identity :: Query db result
