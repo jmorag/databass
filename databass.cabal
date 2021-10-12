@@ -28,7 +28,6 @@ executable databass
   other-modules:
     QueryLanguage
     QueryLanguage.Fancy
-    QueryLanguage.Fancy2
 
   ghc-options:      -Wall -fenable-th-splice-warnings
 
@@ -36,10 +35,9 @@ executable databass
   -- other-extensions:
   build-depends:
     , b-tree
-    , base             ^>=4.15
+    , base             <5
     , pipes
     , relude
-    , singletons-base
 
   hs-source-dirs:   app
   default-language: Haskell2010
