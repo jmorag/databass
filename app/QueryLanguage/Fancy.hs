@@ -46,8 +46,9 @@ module QueryLanguage.Fancy where
 -- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
 
 import GHC.TypeLits
-import Relude hiding (show)
+import Relude hiding (show, Set)
 import Type.Reflection
+import Data.Type.Set hiding (Proxy)
 
 newtype Attribute (label :: Symbol) (a :: Type) = Attr {getAttr :: a}
   deriving (Eq, Ord)
@@ -55,42 +56,22 @@ newtype Attribute (label :: Symbol) (a :: Type) = Attr {getAttr :: a}
 instance (KnownSymbol label, Show value) => Show (Attribute label value) where
   show (Attr a) = symbolVal (Proxy @label) <> ": " <> show a
 
--- Currently doesn't respect order semantics of proper tuples
--- Use something like type-map instead
-data Tuple a where
-  TNil :: Tuple '[]
-  (:::) :: Attribute label value -> Tuple xs -> Tuple (Attribute label value ': xs)
+type instance Cmp (Attribute l1 a) (Attribute l2 b) = CmpSymbol l1 l2
 
-infixr 5 :::
+(<|) :: e -> Set s -> Set (e : s)
+(<|) = Ext
+infixr 5 <|
 
-instance Show (Tuple '[]) where
-  show TNil = ""
-
-instance
-  (KnownSymbol label, Show value, Show (Tuple rest)) =>
-  Show (Tuple (Attribute label value ': rest))
-  where
-  show (Attr val ::: rest) = symbolVal (Proxy @label) <> ": " <> show val <> " | " <> show rest
-
-instance Eq (Tuple '[]) where
-  TNil == TNil = True
-
-instance (Eq value, Eq (Tuple rest)) => Eq (Tuple (Attribute label value ': rest)) where
-  Attr x ::: xs == Attr y ::: ys = x == y && xs == ys
-
-instance Ord (Tuple '[]) where
-  compare TNil TNil = EQ
-
-instance (Ord value, Ord (Tuple rest)) => Ord (Tuple (Attribute label value ': rest)) where
-  compare (Attr x ::: xs) (Attr y ::: ys) = compare x y <> compare xs ys
+type Tuple = Set
 
 data Relation t where
-  Empty :: Relation t
+  EmptyRel :: Relation t
   Insert :: t -> Relation t -> Relation t
   Rename :: As a b -> Relation t -> Relation (Rename a b t)
   Restrict :: (t -> Bool) -> Relation t -> Relation t
   -- Use forall to make type application API better
   Project :: forall attrs t. Relation t -> Relation (Lookup attrs t)
+  Join :: Relation t -> Relation t' -> Relation (ComputeJoin t t')
 
 instance (Typeable heading) => Show (Relation heading) where
   show _ = "TODO Show contents" & h
@@ -104,16 +85,18 @@ instance (Typeable heading) => Show (Relation heading) where
         ("| " <>) . shows label . (" " <>) . shows ty . (" " <>) . go rest
       go other = shows other
 
-type family TCons a tup where
-  TCons attr (Tuple attrs) = Tuple (attr ': attrs)
+-- Very confused why we need the empty case as well...
+type family TCons (a :: Type) tup where
+  TCons attr (Tuple '[]) = Tuple '[attr]
+  TCons attr (Tuple as) = Tuple (attr ': as)
 
 -- Remove and Lookup rely on order of attributes in key being the same as in
 -- heading.
-type family Remove key t where
-  Remove (label ': ls) (Tuple (Attribute label a ': rest)) = Remove ls (Tuple rest)
-  Remove (label ': ls) (Tuple (a ': rest)) = TCons a (Remove (label ': ls) (Tuple rest))
-  Remove '[] tuple = tuple
-  Remove labels (Tuple '[]) = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
+type family RemoveAttrs labels t where
+  RemoveAttrs (label ': ls) (Tuple (Attribute label a ': rest)) = RemoveAttrs ls (Tuple rest)
+  RemoveAttrs (label ': ls) (Tuple (a ': rest)) = TCons a (RemoveAttrs (label ': ls) (Tuple rest))
+  RemoveAttrs '[] tuple = tuple
+  RemoveAttrs labels (Tuple '[]) = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
 
 type family Lookup key t where
   Lookup (label ': ls) (Tuple (Attribute label a ': rest)) =
@@ -129,13 +112,20 @@ type family Rename a b t where
   Rename a b (Tuple (Attribute a t ': rest)) = Tuple (Attribute b t ': rest)
   Rename a b (Tuple (c ': rest)) = TCons c (Rename a b (Tuple rest))
 
-type Person = Tuple [Attribute "id" Int, Attribute "name" String, Attribute "age" Double]
+type family ComputeJoin t t' where
+  ComputeJoin (Tuple xs) (Tuple ys) = Tuple (Union xs ys)
+
+type Person = Tuple '[Attribute "id" Int, Attribute "name" String, Attribute "age" Double]
 
 people :: Relation Person
-people = Insert (Attr 1 ::: Attr "Joseph" ::: Attr 25 ::: TNil) Empty
+people = Insert (Attr 1 <| Attr "Joseph" <| Attr 25 <| Empty) EmptyRel
 
 true :: Relation (Tuple '[])
-true = Insert TNil Empty
+true = Insert Empty EmptyRel
 
 false :: Relation (Tuple '[])
-false = Empty
+false = EmptyRel
+
+renamedPeople = Rename (As @"id" @"ID") people
+
+projectedPeople = Project @'["id", "name"] people

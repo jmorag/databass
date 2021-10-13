@@ -35,9 +35,10 @@ executable databass
   -- other-extensions:
   build-depends:
     , b-tree
-    , base             <5
+    , base    <5
     , pipes
     , relude
+    , type-level-sets
 
   hs-source-dirs:   app
   default-language: Haskell2010
