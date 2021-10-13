@@ -45,11 +45,9 @@ module QueryLanguage.Fancy where
 -- VAR P REAL RELATION  { P# P#, PNAME NAME, COLOR COLOR, WEIGHT WEIGHT, CITY CHAR } KEY { P# } ;
 -- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
 
-import Data.Map.Strict qualified as M
 import GHC.TypeLits
 import Relude hiding (show)
 import Type.Reflection
-import Unsafe.Coerce (unsafeCoerce)
 
 newtype Attribute (label :: Symbol) (a :: Type) = Attr {getAttr :: a}
   deriving (Eq, Ord)
@@ -86,14 +84,16 @@ instance Ord (Tuple '[]) where
 instance (Ord value, Ord (Tuple rest)) => Ord (Tuple (Attribute label value ': rest)) where
   compare (Attr x ::: xs) (Attr y ::: ys) = compare x y <> compare xs ys
 
-data Relation heading key where
-  Rel :: Map (Lookup key heading) (Remove key heading) -> Relation heading key
+data Relation t where
+  Empty :: Relation t
+  Insert :: t -> Relation t -> Relation t
+  Rename :: As a b -> Relation t -> Relation (Rename a b t)
+  Restrict :: (t -> Bool) -> Relation t -> Relation t
+  -- Use forall to make type application API better
+  Project :: forall attrs t. Relation t -> Relation (Lookup attrs t)
 
-instance
-  (Typeable heading, Show (Remove key heading), Show (Lookup key heading)) =>
-  Show (Relation heading key)
-  where
-  show (Rel m) = "" & h <> shows m
+instance (Typeable heading) => Show (Relation heading) where
+  show _ = "TODO Show contents" & h
     where
       h = case typeRep @heading of
         App _tuple list -> go list
@@ -109,54 +109,33 @@ type family TCons a tup where
 
 -- Remove and Lookup rely on order of attributes in key being the same as in
 -- heading.
-type family Remove key heading where
+type family Remove key t where
   Remove (label ': ls) (Tuple (Attribute label a ': rest)) = Remove ls (Tuple rest)
   Remove (label ': ls) (Tuple (a ': rest)) = TCons a (Remove (label ': ls) (Tuple rest))
   Remove '[] tuple = tuple
   Remove labels (Tuple '[]) = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
 
-type family Lookup key heading where
+type family Lookup key t where
   Lookup (label ': ls) (Tuple (Attribute label a ': rest)) =
     TCons (Attribute label a) (Lookup ls (Tuple rest))
   Lookup (label ': ls) (Tuple (a ': rest)) = Lookup (label ': ls) (Tuple rest)
   Lookup '[] tuple = Tuple '[]
   Lookup labels (Tuple '[]) = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
 
-type Heading = Tuple [Attribute "id" Int, Attribute "name" String, Attribute "age" Double]
-
-people :: Relation Heading '["id"]
-people = Rel (M.singleton (Attr 1 ::: TNil) (Attr "Joseph" ::: Attr 25 ::: TNil))
-
-tableDee :: Relation (Tuple '[]) '[]
-tableDee = Rel (M.singleton TNil TNil)
-
 data As (a :: Symbol) (b :: Symbol) = As
 
-type family RenameKey a b key where
-  RenameKey a b '[] = '[]
-  RenameKey a b (a ': rest) = b ': rest
-  RenameKey a b (c ': rest) = c ': RenameKey a b rest
+type family Rename a b t where
+  Rename a b (Tuple '[]) = Tuple '[]
+  Rename a b (Tuple (Attribute a t ': rest)) = Tuple (Attribute b t ': rest)
+  Rename a b (Tuple (c ': rest)) = TCons c (Rename a b (Tuple rest))
 
-type family RenameHeading a b heading where
-  RenameHeading a b (Tuple '[]) = Tuple '[]
-  RenameHeading a b (Tuple (Attribute a t ': rest)) = Tuple (Attribute b t ': rest)
-  RenameHeading a b (Tuple (c ': rest)) = TCons c (RenameHeading a b (Tuple rest))
+type Person = Tuple [Attribute "id" Int, Attribute "name" String, Attribute "age" Double]
 
-rename :: Relation heading key -> As a b -> Relation (RenameHeading a b heading) (RenameKey a b key)
-rename (Rel m) _ = Rel (unsafeCoerce m)
+people :: Relation Person
+people = Insert (Attr 1 ::: Attr "Joseph" ::: Attr 25 ::: TNil) Empty
 
--- restrict :: forall key heading . Relation heading key -> (heading -> Bool) -> Relation heading key
--- restrict (Rel (m :: Map (Lookup key heading) (Remove key heading))) f =
---   Rel (M.filterWithKey (\k v -> f $ assembleHeading k v) m)
--- where
---   assembleHeading TNil v = v
+true :: Relation (Tuple '[])
+true = Insert TNil Empty
 
--- type family AssembleHeading k v heading where
---   AssembleHeading (k ': ks) (v ': vs) (k ': hs) = TCons k (AssembleHeading ks (v ': vs) hs)
-
--- assembleHeading :: Lookup key heading -> Remove key heading -> heading
--- assembleHeading _ _ = _
-
--- data Query db result where
---   Identity :: Query db result
---   Rename ::
+false :: Relation (Tuple '[])
+false = Empty
