@@ -39,6 +39,7 @@ executable databass
     , pipes
     , relude
     , type-level-sets
+    , foldl
 
   hs-source-dirs:   app
   default-language: Haskell2010

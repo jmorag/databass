@@ -45,8 +45,10 @@ module QueryLanguage.Fancy where
 -- VAR P REAL RELATION  { P# P#, PNAME NAME, COLOR COLOR, WEIGHT WEIGHT, CITY CHAR } KEY { P# } ;
 -- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
 
+import Control.Foldl (Fold)
+-- for Cmp Symbol instance
+import Data.Type.Map ()
 import Data.Type.Set hiding (Proxy)
-import Data.Type.Map () -- for Cmp Symbol instance
 import GHC.TypeLits
 import Relude hiding (Set, show)
 import Type.Reflection
@@ -66,14 +68,35 @@ infixr 5 <|
 
 type Tuple = Set
 
+-- TODO make relevant operations multi-arity??
 data Relation (t :: [Type]) where
   EmptyRel :: Relation t
   Insert :: Tuple t -> Relation t -> Relation t
-  Rename :: As a b -> Relation t -> Relation (Rename a b t)
+  Rename :: As a b -> Relation t -> Relation (AsSet (Rename a b t))
   Restrict :: (Tuple t -> Bool) -> Relation t -> Relation t
   -- Use forall to make type application API better
   Project :: forall attrs t. Relation t -> Relation (Lookup (AsSet attrs) (AsSet t))
   Join :: Relation t -> Relation t' -> Relation (Union t t')
+  Union :: Relation t -> Relation t -> Relation t
+  Difference :: Relation t -> Relation t -> Relation t
+  Extend ::
+    forall l a t.
+    (NonMember (Attribute l a) t) =>
+    (Tuple t -> a) ->
+    Relation t ->
+    Relation (Sort (Attribute l a ': t))
+  Summarize ::
+    forall l a t t'.
+    (Subset t' t, NonMember (Attribute l a) t') =>
+    Relation t ->
+    Relation t' ->
+    Fold (Tuple t') a ->
+    Relation (Sort (Attribute l a ': t'))
+  Group ::
+    forall l attrs t.
+    Relation t ->
+    Relation (Sort (Attribute l (Relation (Lookup (AsSet attrs) (AsSet t))) ': RemoveAttrs (AsSet attrs) (AsSet t)))
+  Ungroup :: Relation t -> Relation (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
 
 instance (Typeable heading) => Show (Relation heading) where
   show _ = "TODO Show contents" & h
@@ -98,6 +121,15 @@ type family Lookup (labels :: [Symbol]) (t :: [Type]) :: [Type] where
   Lookup (label ': ls) (a ': rest) = Lookup (label ': ls) rest
   Lookup '[] tuple = '[]
   Lookup labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
+
+type family Get (label :: Symbol) (t :: [Type]) :: Type where
+  Get label (Attribute label a ': rest) = Attribute label a
+  Get label (attr ': rest) = Get label rest
+  Get label '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType label ':<>: 'Text " in table heading")
+
+type family UnNest t where
+  UnNest (Attribute l (Relation ts)) = ts
+  UnNest (Attribute l t) = TypeError ( 'Text "Attribute " ':<>: 'ShowType (Attribute l t) ':<>: 'Text " is not relation valued")
 
 data As (a :: Symbol) (b :: Symbol) = As
 
