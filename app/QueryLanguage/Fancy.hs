@@ -23,26 +23,26 @@ import Control.Foldl qualified as L
 import Data.Type.Map ()
 import Data.Type.Set hiding (Proxy)
 import GHC.TypeLits
-import Relude hiding (Set, show, Identity)
+import Relude hiding (Identity, Set, show)
 import Type.Reflection
 import Unsafe.Coerce (unsafeCoerce)
 
--- TODO: Consider shorter name / symbol for these, they get typed a lot
-newtype Attribute (label :: Symbol) (a :: Type) = Attr {getAttr :: a}
+-- Tagged Attribtue
+newtype (label :: Symbol) ::: (a :: Type) = A {getAttr :: a}
   deriving (Eq, Ord, Functor)
 
 type family GetAttr attr where
-  GetAttr (Attribute l a) = a
+  GetAttr (l ::: a) = a
   GetAttr x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family GetLabel attr where
-  GetLabel (Attribute l a) = l
+  GetLabel (l ::: a) = l
   GetLabel x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
-instance (KnownSymbol label, Show value) => Show (Attribute label value) where
-  show (Attr a) = symbolVal (Proxy @label) <> ": " <> show a
+instance (KnownSymbol label, Show value) => Show (label ::: value) where
+  show attr = symbolVal (Proxy @label) <> ": " <> show (getAttr attr)
 
-type instance Cmp (Attribute l1 a) (Attribute l2 b) = CmpSymbol l1 l2
+type instance Cmp (l1 ::: a) (l2 ::: b) = CmpSymbol l1 l2
 
 (<|) :: e -> Set s -> Set (e : s)
 (<|) = Ext
@@ -54,7 +54,7 @@ type Tuple = Set
 class Index label attrs where
   index :: Tuple attrs -> GetAttr (Get label attrs)
 
-instance {-# OVERLAPPABLE #-} Index label (Attribute label a ': rest) where
+instance {-# OVERLAPPABLE #-} Index label (label ::: a ': rest) where
   index (Ext attr _) = getAttr attr
 
 instance {-# OVERLAPS #-} Index label attrs => Index label (attr ': attrs) where
@@ -74,21 +74,21 @@ data Query (t :: [Type]) where
   Difference :: Query t -> Query t -> Query t
   Extend ::
     forall l a t.
-    (NonMember (Attribute l a) t) =>
+    (NonMember (l ::: a) t) =>
     (Tuple t -> a) ->
     Query t ->
-    Query (Sort (Attribute l a ': t))
+    Query (Sort (l ::: a ': t))
   Summarize ::
     forall l a t t'.
-    (Subset t' t, NonMember (Attribute l a) t') =>
+    (Subset t' t, NonMember (l ::: a) t') =>
     Query t' ->
     Fold (Tuple t') a ->
     Query t ->
-    Query (Sort (Attribute l a ': t'))
+    Query (Sort (l ::: a ': t'))
   Group ::
     forall l attrs t.
     Query t ->
-    Query (Sort (Attribute l (Query (Lookup (AsSet attrs) (AsSet t))) ': RemoveAttrs (AsSet attrs) (AsSet t)))
+    Query (Sort (l ::: Query (Lookup (AsSet attrs) (AsSet t)) ': RemoveAttrs (AsSet attrs) (AsSet t)))
   Ungroup ::
     forall l t.
     Query t ->
@@ -107,33 +107,31 @@ instance (Typeable heading) => Show (Query heading) where
       go other = shows other
 
 type family RemoveAttrs (labels :: [Symbol]) (t :: [Type]) :: [Type] where
-  RemoveAttrs (label ': ls) (Attribute label a ': rest) = RemoveAttrs ls rest
+  RemoveAttrs (label ': ls) (label ::: a ': rest) = RemoveAttrs ls rest
   RemoveAttrs (label ': ls) (a ': rest) = a ': RemoveAttrs (label ': ls) rest
   RemoveAttrs '[] tuple = tuple
   RemoveAttrs labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
 
 type family Lookup (labels :: [Symbol]) (t :: [Type]) :: [Type] where
-  Lookup (label ': ls) (Attribute label a ': rest) = Attribute label a ': Lookup ls rest
+  Lookup (label ': ls) (label ::: a ': rest) = label ::: a ': Lookup ls rest
   Lookup (label ': ls) (a ': rest) = Lookup (label ': ls) rest
   Lookup '[] tuple = '[]
   Lookup labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels ':<>: 'Text " in table heading")
 
 type family Get (label :: Symbol) (t :: [Type]) :: Type where
-  Get label (Attribute label a ': rest) = Attribute label a
+  Get label (label ::: a ': rest) = label ::: a
   Get label (attr ': rest) = Get label rest
   Get label '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType label ':<>: 'Text " in table heading")
 
 type family UnNest t where
-  UnNest (Attribute l (Query ts)) = ts
-  UnNest (Attribute l t) = TypeError ( 'ShowType (Attribute l t) ':<>: 'Text " is not relation valued")
+  UnNest (l ::: Query ts) = ts
+  UnNest (l ::: t) = TypeError ( 'ShowType (l ::: t) ':<>: 'Text " is not relation valued")
   UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Type]) :: [Type] where
   Rename a b '[] = '[]
-  Rename a b (Attribute a t ': rest) = Attribute b t ': rest
+  Rename a b (a ::: t ': rest) = b ::: t ': rest
   Rename a b (c ': rest) = c ': Rename a b rest
-
-type Person = '[Attribute "id" Int, Attribute "name" String, Attribute "age" Double]
 
 -- The running example
 -- ╔═════════════════════════════════════════════════════════════════╗
@@ -164,19 +162,19 @@ type Person = '[Attribute "id" Int, Attribute "name" String, Attribute "age" Dou
 -- VAR P REAL RELATION  { P# P#, PNAME NAME, COLOR COLOR, WEIGHT WEIGHT, CITY CHAR } KEY { P# } ;
 -- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
 
-type SHeading = '[Attribute "S#" Int, Attribute "SNAME" String, Attribute "STATUS" Int, Attribute "CITY" String]
+type SHeading = '["S#" ::: Int, "SNAME" ::: String, "STATUS" ::: Int, "CITY" ::: String]
 
 s :: Query SHeading
 s = Identity
 
 data Color = Red | Green | Blue deriving (Show, Eq)
 
-type PHeading = '[Attribute "P#" Int, Attribute "PNAME" String, Attribute "COLOR" Color, Attribute "WEIGHT" Double, Attribute "CITY" String]
+type PHeading = '["P#" ::: Int, "PNAME" ::: String, "COLOR" ::: Color, "WEIGHT" ::: Double, "CITY" ::: String]
 
 p :: Query PHeading
 p = Identity
 
-type SPHeading = '[Attribute "S#" Int, Attribute "P#" Int, Attribute "QTY" Int]
+type SPHeading = '["S#" ::: Int, "P#" ::: Int, "QTY" ::: Int]
 
 sp :: Query SPHeading
 sp = Identity
