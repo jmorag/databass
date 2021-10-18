@@ -99,11 +99,8 @@ data Relation (t :: [Type]) where
   Ungroup :: Relation t -> Relation (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
 
 instance (Typeable heading) => Show (Relation heading) where
-  show _ = "TODO Show contents" & h
+  show _ = "TODO Show contents" & go (typeRep @heading)
     where
-      h = case typeRep @heading of
-        App _tuple list -> go list
-        other -> shows other
       go :: TypeRep a -> ShowS
       go (Con _nil) = ("|\n" <>)
       go (App (App _ (App (App _ label) ty)) rest) =
