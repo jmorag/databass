@@ -72,12 +72,13 @@ type Tuple = Set
 data Relation (t :: [Type]) where
   EmptyRel :: Relation t
   Insert :: Tuple t -> Relation t -> Relation t
-  Rename :: As a b -> Relation t -> Relation (AsSet (Rename a b t))
+  Rename :: forall a b t. Relation t -> Relation (AsSet (Rename a b t))
   Restrict :: (Tuple t -> Bool) -> Relation t -> Relation t
   -- Use forall to make type application API better
   Project :: forall attrs t. Relation t -> Relation (Lookup (AsSet attrs) (AsSet t))
   Join :: Relation t -> Relation t' -> Relation (Union t t')
   Union :: Relation t -> Relation t -> Relation t
+  Intersection :: Relation t -> Relation t -> Relation t
   Difference :: Relation t -> Relation t -> Relation t
   Extend ::
     forall l a t.
@@ -88,15 +89,18 @@ data Relation (t :: [Type]) where
   Summarize ::
     forall l a t t'.
     (Subset t' t, NonMember (Attribute l a) t') =>
-    Relation t ->
     Relation t' ->
     Fold (Tuple t') a ->
+    Relation t ->
     Relation (Sort (Attribute l a ': t'))
   Group ::
     forall l attrs t.
     Relation t ->
     Relation (Sort (Attribute l (Relation (Lookup (AsSet attrs) (AsSet t))) ': RemoveAttrs (AsSet attrs) (AsSet t)))
-  Ungroup :: Relation t -> Relation (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
+  Ungroup ::
+    forall l t.
+    Relation t ->
+    Relation (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
 
 instance (Typeable heading) => Show (Relation heading) where
   show _ = "TODO Show contents" & go (typeRep @heading)
@@ -126,9 +130,8 @@ type family Get (label :: Symbol) (t :: [Type]) :: Type where
 
 type family UnNest t where
   UnNest (Attribute l (Relation ts)) = ts
-  UnNest (Attribute l t) = TypeError ( 'Text "Attribute " ':<>: 'ShowType (Attribute l t) ':<>: 'Text " is not relation valued")
-
-data As (a :: Symbol) (b :: Symbol) = As
+  UnNest (Attribute l t) = TypeError ( 'ShowType (Attribute l t) ':<>: 'Text " is not relation valued")
+  UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Type]) :: [Type] where
   Rename a b '[] = '[]
