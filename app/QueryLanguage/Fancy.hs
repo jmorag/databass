@@ -62,14 +62,18 @@ instance {-# OVERLAPS #-} Index label attrs => Index label (attr ': attrs) where
   index (Ext _ rest) = unsafeCoerce $ index @label rest
 
 -- TODO make relevant operations multi-arity??
+-- Also, should this be named "Query"?
 data Relation (t :: [Type]) where
+  -- It is unclear that these first three should be in this type, as they aren't
+  -- "pure" relation operators
   EmptyRel :: Relation t
   Insert :: Tuple t -> Relation t -> Relation t
+  Update :: (Tuple t -> Tuple t) -> Relation t -> Relation t
   Rename :: forall a b t. Relation t -> Relation (AsSet (Rename a b t))
   Restrict :: (Tuple t -> Bool) -> Relation t -> Relation t
   -- Use forall to make type application API better
   Project :: forall attrs t. Relation t -> Relation (Lookup (AsSet attrs) (AsSet t))
-  Join :: Relation t -> Relation t' -> Relation (Union t t')
+  Join :: Relation t' -> Relation t -> Relation (Union t' t)
   Union :: Relation t -> Relation t -> Relation t
   Intersection :: Relation t -> Relation t -> Relation t
   Difference :: Relation t -> Relation t -> Relation t
