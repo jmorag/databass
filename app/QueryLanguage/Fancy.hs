@@ -103,12 +103,15 @@ data Relation (t :: [Type]) where
     Relation (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
 
 instance (Typeable heading) => Show (Relation heading) where
-  show _ = "TODO Show contents" & go (typeRep @heading)
+  show _ = "\nTODO Show contents" & go (typeRep @heading)
     where
       go :: TypeRep a -> ShowS
-      go (Con _nil) = ("|\n" <>)
+      go (Con nil) | tyConName nil == "'[]" = ("|" <>)
       go (App (App _ (App (App _ label) ty)) rest) =
-        ("| " <>) . shows label . (" " <>) . shows ty . (" " <>) . go rest
+        ("| " <>) . shows label . (" " <>) . go ty . (" " <>) . go rest
+      go (App (Con relation) nested)
+        | tyConName relation == "Relation" =
+          ("(" <>) . go nested . (")" <>)
       go other = shows other
 
 type family RemoveAttrs (labels :: [Symbol]) (t :: [Type]) :: [Type] where
