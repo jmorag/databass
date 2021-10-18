@@ -23,7 +23,7 @@ import Control.Foldl qualified as L
 import Data.Type.Map ()
 import Data.Type.Set hiding (Proxy)
 import GHC.TypeLits
-import Relude hiding (Set, show)
+import Relude hiding (Set, show, Identity)
 import Type.Reflection
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -62,44 +62,39 @@ instance {-# OVERLAPS #-} Index label attrs => Index label (attr ': attrs) where
   index (Ext _ rest) = unsafeCoerce $ index @label rest
 
 -- TODO make relevant operations multi-arity??
--- Also, should this be named "Query"?
-data Relation (t :: [Type]) where
-  -- It is unclear that these first three should be in this type, as they aren't
-  -- "pure" relation operators
-  EmptyRel :: Relation t
-  Insert :: Tuple t -> Relation t -> Relation t
-  Update :: (Tuple t -> Tuple t) -> Relation t -> Relation t
-  Rename :: forall a b t. Relation t -> Relation (AsSet (Rename a b t))
-  Restrict :: (Tuple t -> Bool) -> Relation t -> Relation t
+data Query (t :: [Type]) where
+  Identity :: Query t
+  Rename :: forall a b t. Query t -> Query (AsSet (Rename a b t))
+  Restrict :: (Tuple t -> Bool) -> Query t -> Query t
   -- Use forall to make type application API better
-  Project :: forall attrs t. Relation t -> Relation (Lookup (AsSet attrs) (AsSet t))
-  Join :: Relation t' -> Relation t -> Relation (Union t' t)
-  Union :: Relation t -> Relation t -> Relation t
-  Intersection :: Relation t -> Relation t -> Relation t
-  Difference :: Relation t -> Relation t -> Relation t
+  Project :: forall attrs t. Query t -> Query (Lookup (AsSet attrs) (AsSet t))
+  Join :: Query t' -> Query t -> Query (Union t' t)
+  Union :: Query t -> Query t -> Query t
+  Intersection :: Query t -> Query t -> Query t
+  Difference :: Query t -> Query t -> Query t
   Extend ::
     forall l a t.
     (NonMember (Attribute l a) t) =>
     (Tuple t -> a) ->
-    Relation t ->
-    Relation (Sort (Attribute l a ': t))
+    Query t ->
+    Query (Sort (Attribute l a ': t))
   Summarize ::
     forall l a t t'.
     (Subset t' t, NonMember (Attribute l a) t') =>
-    Relation t' ->
+    Query t' ->
     Fold (Tuple t') a ->
-    Relation t ->
-    Relation (Sort (Attribute l a ': t'))
+    Query t ->
+    Query (Sort (Attribute l a ': t'))
   Group ::
     forall l attrs t.
-    Relation t ->
-    Relation (Sort (Attribute l (Relation (Lookup (AsSet attrs) (AsSet t))) ': RemoveAttrs (AsSet attrs) (AsSet t)))
+    Query t ->
+    Query (Sort (Attribute l (Query (Lookup (AsSet attrs) (AsSet t))) ': RemoveAttrs (AsSet attrs) (AsSet t)))
   Ungroup ::
     forall l t.
-    Relation t ->
-    Relation (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
+    Query t ->
+    Query (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
 
-instance (Typeable heading) => Show (Relation heading) where
+instance (Typeable heading) => Show (Query heading) where
   show _ = "\nTODO Show contents" & go (typeRep @heading)
     where
       go :: TypeRep a -> ShowS
@@ -107,7 +102,7 @@ instance (Typeable heading) => Show (Relation heading) where
       go (App (App _ (App (App _ label) ty)) rest) =
         ("| " <>) . shows label . (" " <>) . go ty . (" " <>) . go rest
       go (App (Con relation) nested)
-        | tyConName relation == "Relation" =
+        | tyConName relation == "Query" =
           ("(" <>) . go nested . (")" <>)
       go other = shows other
 
@@ -129,7 +124,7 @@ type family Get (label :: Symbol) (t :: [Type]) :: Type where
   Get label '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType label ':<>: 'Text " in table heading")
 
 type family UnNest t where
-  UnNest (Attribute l (Relation ts)) = ts
+  UnNest (Attribute l (Query ts)) = ts
   UnNest (Attribute l t) = TypeError ( 'ShowType (Attribute l t) ':<>: 'Text " is not relation valued")
   UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
@@ -171,46 +166,20 @@ type Person = '[Attribute "id" Int, Attribute "name" String, Attribute "age" Dou
 
 type SHeading = '[Attribute "S#" Int, Attribute "SNAME" String, Attribute "STATUS" Int, Attribute "CITY" String]
 
-s :: Relation SHeading
-s =
-  EmptyRel
-    & Insert (Attr 1 <| Attr "Smith" <| Attr 20 <| Attr "London" <| Empty)
-    & Insert (Attr 2 <| Attr "Jones" <| Attr 10 <| Attr "Paris" <| Empty)
-    & Insert (Attr 3 <| Attr "Blake" <| Attr 30 <| Attr "Paris" <| Empty)
-    & Insert (Attr 4 <| Attr "Clark" <| Attr 20 <| Attr "London" <| Empty)
-    & Insert (Attr 5 <| Attr "Adams" <| Attr 30 <| Attr "Athens" <| Empty)
+s :: Query SHeading
+s = Identity
 
 data Color = Red | Green | Blue deriving (Show, Eq)
 
 type PHeading = '[Attribute "P#" Int, Attribute "PNAME" String, Attribute "COLOR" Color, Attribute "WEIGHT" Double, Attribute "CITY" String]
 
-p :: Relation PHeading
-p =
-  EmptyRel
-    & Insert (Attr 1 <| Attr "Nut" <| Attr Red <| Attr 12 <| Attr "London" <| Empty)
-    & Insert (Attr 2 <| Attr "Bolt" <| Attr Green <| Attr 17 <| Attr "Paris" <| Empty)
-    & Insert (Attr 3 <| Attr "Screw" <| Attr Blue <| Attr 17 <| Attr "Oslo" <| Empty)
-    & Insert (Attr 4 <| Attr "Screw" <| Attr Red <| Attr 14 <| Attr "London" <| Empty)
-    & Insert (Attr 5 <| Attr "Cam" <| Attr Blue <| Attr 12 <| Attr "Paris" <| Empty)
-    & Insert (Attr 6 <| Attr "Cog" <| Attr Red <| Attr 19 <| Attr "London" <| Empty)
+p :: Query PHeading
+p = Identity
 
 type SPHeading = '[Attribute "S#" Int, Attribute "P#" Int, Attribute "QTY" Int]
 
-sp :: Relation SPHeading
-sp =
-  EmptyRel
-    & Insert (Attr 1 <| Attr 1 <| Attr 300 <| Empty)
-    & Insert (Attr 1 <| Attr 2 <| Attr 200 <| Empty)
-    & Insert (Attr 1 <| Attr 3 <| Attr 400 <| Empty)
-    & Insert (Attr 1 <| Attr 4 <| Attr 200 <| Empty)
-    & Insert (Attr 1 <| Attr 5 <| Attr 100 <| Empty)
-    & Insert (Attr 1 <| Attr 6 <| Attr 100 <| Empty)
-    & Insert (Attr 2 <| Attr 1 <| Attr 300 <| Empty)
-    & Insert (Attr 2 <| Attr 2 <| Attr 400 <| Empty)
-    & Insert (Attr 3 <| Attr 2 <| Attr 200 <| Empty)
-    & Insert (Attr 4 <| Attr 2 <| Attr 200 <| Empty)
-    & Insert (Attr 4 <| Attr 4 <| Attr 300 <| Empty)
-    & Insert (Attr 4 <| Attr 5 <| Attr 400 <| Empty)
+sp :: Query SPHeading
+sp = Identity
 
 extendEx = s & Extend @"TRIPLE" (\t -> index @"STATUS" t * 3)
 
