@@ -44,22 +44,7 @@ instance (KnownSymbol label, Show value) => Show (label ::: value) where
 
 type instance Cmp (l1 ::: a) (l2 ::: b) = CmpSymbol l1 l2
 
-(<|) :: e -> Set s -> Set (e : s)
-(<|) = Ext
-
-infixr 5 <|
-
 type Tuple = Set
-
-class Index label attrs where
-  index :: Tuple attrs -> GetAttr (Get label attrs)
-
-instance {-# OVERLAPPABLE #-} Index label (label ::: a ': rest) where
-  index (Ext attr _) = getAttr attr
-
-instance {-# OVERLAPS #-} Index label attrs => Index label (attr ': attrs) where
-  -- Worrying, but appears to work fine?
-  index (Ext _ rest) = unsafeCoerce $ index @label rest
 
 -- TODO make relevant operations multi-arity??
 data Query (t :: [Type]) where
@@ -122,6 +107,16 @@ type family Get (label :: Symbol) (t :: [Type]) :: Type where
   Get label (label ::: a ': rest) = label ::: a
   Get label (attr ': rest) = Get label rest
   Get label '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType label ':<>: 'Text " in table heading")
+
+class Index label attrs where
+  index :: Tuple attrs -> GetAttr (Get label attrs)
+
+instance {-# OVERLAPPABLE #-} Index label (label ::: a ': rest) where
+  index (Ext attr _) = getAttr attr
+
+instance {-# OVERLAPS #-} Index label attrs => Index label (attr ': attrs) where
+  -- Worrying, but appears to work fine?
+  index (Ext _ rest) = unsafeCoerce $ index @label rest
 
 type family UnNest t where
   UnNest (l ::: Query ts) = ts
