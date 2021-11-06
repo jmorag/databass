@@ -28,6 +28,7 @@ executable databass
   other-modules:
     QueryLanguage
     QueryLanguage.Fancy
+    QueryLanguage.TypeMap
 
   ghc-options:      -Wall -fenable-th-splice-warnings
 
@@ -36,6 +37,7 @@ executable databass
   build-depends:
     , b-tree
     , base    <5
+    , binary
     , pipes
     , relude
     , type-level-sets
