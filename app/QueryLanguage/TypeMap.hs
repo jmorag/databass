@@ -1,4 +1,5 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
@@ -68,10 +69,13 @@ type family GetAttr attr where
   GetAttr (l ::: a) = a
   GetAttr x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
+type family Table' heading key where
+  Table' heading key = Table heading key (heading :!! key) (heading :\\ key)
+
 data Table heading key k v where
   MkTable ::
     forall (key :: [Symbol]) (heading :: [Mapping Symbol Type]) k v.
-    (IsKey key heading, Binary (Tuple heading), k ~ (heading :!! key), v ~ (heading :\\ key)) =>
+    (IsKey key heading, Binary (Tuple heading), k ~ (heading :!! key), v ~ (heading :\\ key), Unionable k v, Union k v ~ AsMap heading) =>
     Table heading key k v
 
 -- | Type level multi-key lookup from a map
@@ -105,42 +109,47 @@ type family (m :: [Mapping Symbol Type]) :! (c :: Symbol) :: Type where
   '[] :! label = TypeError ( 'Text "Could not find " ':<>: 'ShowType label)
 
 type family UnNest t where
-  UnNest (l ::: Query ts) = ts
+  UnNest (l ::: Query ts tables) = ts
   UnNest (l ::: t) = TypeError ( 'ShowType (l ::: t) ':<>: 'Text " is not relation valued")
   UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
-data Query (t :: [Mapping Symbol Type]) where
-  Identity :: Table t key k v -> Query t
-  Rename :: forall a b t. Query t -> Query (AsMap (Rename a b t))
-  Restrict :: (Tuple t -> Bool) -> Query t -> Query t
-  Project :: forall attrs t. Query t -> Query (AsMap t :!! AsSet attrs)
-  Join :: Query t' -> Query t -> Query (Union t' t)
-  Union :: Query t -> Query t -> Query t
-  Intersection :: Query t -> Query t -> Query t
-  Difference :: Query t -> Query t -> Query t
+data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
+  Identity ::
+    forall (table :: Symbol) tables heading key k v.
+    (KnownSymbol table, heading ~ TableHeading (tables :! table)) =>
+    Var table ->
+    Proxy (Table heading key k v) ->
+    Query heading tables
+  Rename :: forall a b t tables. Query t tables -> Query (AsMap (Rename a b t)) tables
+  Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
+  Project :: forall attrs t tables. Query t tables -> Query (AsMap t :!! AsSet attrs) tables
+  Join :: Query t' tables -> Query t tables -> Query (Union t' t) tables
+  Union :: Query t tables -> Query t tables -> Query t tables
+  Intersection :: Query t tables -> Query t tables -> Query t tables
+  Difference :: Query t tables -> Query t tables -> Query t tables
   Extend ::
-    forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]).
+    forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
     (Member l t ~ 'False) =>
     (Tuple t -> a) ->
-    Query t ->
-    Query (Sort (l ::: a ': t))
+    Query t tables ->
+    Query (Sort (l ::: a ': t)) tables
   Summarize ::
-    forall l a t t'.
-    (Submap t' t, Member l t' ~ 'False) =>
-    Query t' ->
+    forall l a t t' tables.
+    (Submap (AsMap t') (AsMap t), Member l t' ~ 'False) =>
+    Query t' tables ->
     Fold (Tuple t') a ->
-    Query t ->
-    Query (Sort (l ::: a ': t'))
+    Query t tables ->
+    Query (Sort (l ::: a ': t')) tables
   Group ::
-    forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]).
-    Query t ->
-    Query (Sort (l ::: Query (AsMap t :!! AsSet attrs) ': AsSet t :\\ AsSet attrs))
+    forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]) tables.
+    Query t tables ->
+    Query (Sort (l ::: Query (AsMap t :!! AsSet attrs) tables ': AsSet t :\\ AsSet attrs)) tables
   Ungroup ::
-    forall l t.
-    Query t ->
-    Query (Sort (UnNest (l ::: (t :! l)) :++ t :\ l))
+    forall l t tables.
+    Query t tables ->
+    Query (Sort (UnNest (l ::: (t :! l)) :++ t :\ l)) tables
 
-instance (Typeable heading) => Show (Query heading) where
+instance (Typeable heading) => Show (Query heading tables) where
   show _ = "\nTODO Show contents" & go (typeRep @heading)
     where
       go :: TypeRep a -> ShowS
@@ -183,8 +192,7 @@ instance (Typeable heading) => Show (Query heading) where
 
 type SHeading = '["S#" ::: Int, "SNAME" ::: String, "STATUS" ::: Int, "CITY" ::: String]
 
-s :: Query SHeading
-s = Identity (MkTable @'["S#"])
+type S = "s" ::: Table' SHeading '["S#"]
 
 data Color = Red | Green | Blue deriving (Show, Eq, Generic)
 
@@ -192,17 +200,28 @@ instance Binary Color
 
 type PHeading = '["P#" ::: Int, "PNAME" ::: String, "COLOR" ::: Color, "WEIGHT" ::: Double, "CITY" ::: String]
 
-p :: Query PHeading
-p = Identity (MkTable @'["P#"])
+type P = "p" ::: Table' PHeading '["P#"]
 
 type SPHeading = '["S#" ::: Int, "P#" ::: Int, "QTY" ::: Int]
 
-sp :: Query SPHeading
-sp = Identity (MkTable @'["S#", "P#"])
+type SP = "sp" ::: Table' SPHeading '["S#", "P#"]
+
+type Tables = '[S, P, SP]
+
+s :: Query SHeading Tables
+s = Identity (Var @"s") Proxy
+
+p :: Query PHeading Tables
+p = Identity (Var @"p") Proxy
+
+sp :: Query SPHeading Tables
+sp = Identity (Var @"sp") Proxy
 
 extendEx = s & Extend @"TRIPLE" (\t -> lookp' @"STATUS" t * 3)
 
 summarizeEx = sp & Summarize @"P_COUNT" (Project @'["S#"] s) L.length
+
+projectEx = s & Project @'["S#"]
 
 groupEx = sp & Group @"PQ" @'["P#", "QTY"]
 
@@ -291,8 +310,13 @@ db =
     & insert @"SP" (4 |> 5 |> 400 |> Empty)
     & DeleteTable (Var @"Supplier")
 
--- runQuery :: Query t -> Database tables -> [Tuple t]
--- runQuery q db = []
+runQuery :: forall t tables. Query t tables -> Database tables -> [Tuple (AsMap t)]
+runQuery q db =
+  let mem = materializeDB db
+   in case q of
+        (Identity (Var :: Var table) (Proxy :: forall k v. (Union k v ~ AsMap t) => Proxy (Table heading key k v)) :: Query t tables) ->
+          M.toList (mem M.! str @table) & map \(k, v) -> asMap (decode k :: Tuple k) `union` asMap (decode v :: Tuple v)
+        _ -> []
 
 materializeDB :: forall tables. Database tables -> M.Map String (M.Map LByteString LByteString)
 materializeDB EmptyDB = mempty
