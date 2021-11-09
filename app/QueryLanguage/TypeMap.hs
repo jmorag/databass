@@ -6,7 +6,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
-{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
@@ -26,12 +25,12 @@
 module QueryLanguage.TypeMap where
 
 import Control.Foldl (Fold)
-import Control.Foldl qualified as L
+import qualified Control.Foldl as L
 import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
-import Data.ByteString.Lazy qualified as BL
-import Data.Map.Strict qualified as M
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
