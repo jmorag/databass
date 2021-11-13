@@ -29,11 +29,10 @@ executable databass
     QueryLanguage
     QueryLanguage.Fancy
     QueryLanguage.TypeMap
+    QueryLanguage.Examples
 
-  ghc-options:      -Wall -fenable-th-splice-warnings
+  ghc-options: -W -fno-warn-partial-type-signatures
 
-  -- LANGUAGE extensions used by modules in this package.
-  -- other-extensions:
   build-depends:
     , b-tree
     , base    <5
@@ -43,5 +42,27 @@ executable databass
     , type-level-sets
     , foldl
 
-  hs-source-dirs:   app
+  hs-source-dirs:   src
   default-language: Haskell2010
+  default-extensions:
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    FlexibleInstances
+    FlexibleContexts
+    GADTs
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    PartialTypeSignatures
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    UndecidableInstances
