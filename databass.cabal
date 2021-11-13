@@ -22,36 +22,36 @@ maintainer:         lba2138@columbia.edu
 extra-source-files: CHANGELOG.md
 
 executable databass
-  main-is:          Main.hs
+  main-is:            Main.hs
 
   -- Modules included in this executable, other than Main.
+  -- cabal-fmt: expand src
+  --
   other-modules:
     QueryLanguage
     QueryLanguage.Fancy
-    QueryLanguage.TypeMap
-    QueryLanguage.Examples
+    QueryLanguage.Fancy.Examples
 
-  ghc-options: -W -fno-warn-partial-type-signatures
-
+  ghc-options:        -W -fno-warn-partial-type-signatures
   build-depends:
     , b-tree
-    , base    <5
+    , base             <5
     , binary
+    , foldl
     , pipes
     , relude
     , type-level-sets
-    , foldl
 
-  hs-source-dirs:   src
-  default-language: Haskell2010
+  hs-source-dirs:     src
+  default-language:   Haskell2010
   default-extensions:
     BlockArguments
     ConstraintKinds
     DataKinds
     DeriveFunctor
     DeriveGeneric
-    FlexibleInstances
     FlexibleContexts
+    FlexibleInstances
     GADTs
     InstanceSigs
     KindSignatures

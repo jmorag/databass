@@ -1,13 +1,11 @@
-{-# LANGUAGE OverloadedLabels #-}
-
--- |
-module QueryLanguage.Examples where
+-- | Example uses of fancy query language
+module QueryLanguage.Fancy.Examples where
 
 import qualified Control.Foldl as L
 import Data.Binary
 import Data.Type.Map
 import GHC.TypeLits
-import QueryLanguage.TypeMap
+import QueryLanguage.Fancy
 import Relude hiding (Identity)
 import Data.Type.Set (Sort)
 

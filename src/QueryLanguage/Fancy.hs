@@ -1,99 +1,152 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE ImportQualifiedPost #-}
-{-# LANGUAGE InstanceSigs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE PartialTypeSignatures #-}
-{-# LANGUAGE PolyKinds #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
-{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-missing-signatures #-}
 
 -- | Embedding of relational model as per chapter 2 of third manifesto
 module QueryLanguage.Fancy where
 
 import Control.Foldl (Fold)
-import Control.Foldl qualified as L
--- for Cmp Symbol instance
-import Data.Type.Map ()
-import Data.Type.Set hiding (Proxy)
+import Data.Binary
+import Data.Binary.Get (getInt64le, isolate)
+import Data.Binary.Put
+import qualified Data.ByteString.Lazy as BL
+import qualified Data.Map.Strict as M
+import Data.Type.Map
+import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
-import Relude hiding (Identity, Set, show)
+import Relude hiding (Identity, Map, get, put, undefined)
 import Type.Reflection
 import Unsafe.Coerce (unsafeCoerce)
 
--- Tagged Attribtue
-newtype (label :: Symbol) ::: (a :: Type) = A {getAttr :: a}
-  deriving (Eq, Ord, Functor)
+(|>) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
+(|>) = Ext (Var @k)
+
+infixr 5 |>
+
+instance IsLabel k (v -> Map m -> Map ((k ':-> v) : m)) where
+  fromLabel = Ext (Var @k)
+
+type Tuple = Map
+
+-- | Kind constrained version of :-> that binds more tightly
+type (k :: Symbol) ::: (v :: Type) = k ':-> v
+
+infixr 6 :::
+
+instance Binary (Tuple '[]) where
+  put Empty = pure ()
+  get = pure Empty
+
+instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
+  put (Ext _ x xs) = do
+    let bytes = runPut $ put x
+    putInt64le (BL.length bytes)
+    put x
+    put xs
+  get = do
+    size <- getInt64le
+    x <- isolate (fromIntegral size) get
+    Ext Var x <$> get
 
 type family GetAttr attr where
   GetAttr (l ::: a) = a
-  GetAttr x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
+  GetAttr x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
 
 type family GetLabel attr where
   GetLabel (l ::: a) = l
-  GetLabel x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
+  GetLabel x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
 
-instance (KnownSymbol label, Show value) => Show (label ::: value) where
-  show attr = symbolVal (Proxy @label) <> ": " <> show (getAttr attr)
+type family GetLabels attrs where
+  GetLabels '[] = '[]
+  GetLabels (l ::: a ': xs) = l ': GetLabels xs
+  GetLabels x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
 
-type instance Cmp (l1 ::: a) (l2 ::: b) = CmpSymbol l1 l2
+type family T heading (key :: [Symbol]) where
+  T heading key = Table (AsMap heading) (AsMap heading :!! AsSet key) (AsMap heading :\\ AsSet key)
 
-type Tuple = Set
+type IsHeading heading k v =
+  ( Submap k heading,
+    Submap v heading,
+    Split k v heading,
+    Unionable k v,
+    Union k v ~ heading,
+    Binary (Tuple heading),
+    Binary (Tuple k),
+    Binary (Tuple v)
+  )
 
-instance Eq (Tuple '[]) where
-  _ == _ = True
+data Table heading k v where
+  MkTable :: forall (heading :: [Mapping Symbol Type]) k v. (IsHeading heading k v) => Table heading k v
 
-instance Ord (Tuple '[]) where
-  compare _ _ = EQ
+type family IsKey (labels :: [Symbol]) (t :: [Mapping Symbol Type]) :: Constraint where
+  IsKey (label ': ls) (label ::: a ': rest) = IsKey ls rest
+  IsKey (label ': ls) (a ': rest) = IsKey (label ': ls) rest
+  IsKey '[] tuple = ()
+  IsKey labels '[] = TypeError ('Text "Could not find " ':<>: 'ShowType labels)
 
-instance (Ord e, Ord (Tuple s)) => Ord (Tuple (e ': s)) where
-  compare (Ext x xs) (Ext y ys) = compare x y <> compare xs ys
+type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
+  Rename a b '[] = '[]
+  Rename a b ((a ::: t) ': rest) = (b ::: t) ': rest
+  Rename a b (c ': rest) = c ': Rename a b rest
 
--- TODO make relevant operations multi-arity??
-data Query (t :: [Type]) where
-  Identity :: Table t key -> Query t
-  Rename :: forall a b t. Query t -> Query (AsSet (Rename a b t))
-  Restrict :: (Tuple t -> Bool) -> Query t -> Query t
-  -- Use forall to make type application API better
-  Project :: forall attrs t. Query t -> Query (LookupKey (AsSet attrs) (AsSet t))
-  Join :: Query t' -> Query t -> Query (Union t' t)
-  Union :: Query t -> Query t -> Query t
-  Intersection :: Query t -> Query t -> Query t
-  Difference :: Query t -> Query t -> Query t
+-- | Delete multiple elements from a map by key
+type family (m :: [Mapping Symbol Type]) :\\ (cs :: [Symbol]) :: [Mapping Symbol Type] where
+  (label ::: a ': rest) :\\ (label ': ls) = rest :\\ ls
+  (a ': rest) :\\ (label ': ls) = a ': rest :\\ (label ': ls)
+  tuple :\\ '[] = tuple
+  '[] :\\ labels = TypeError ('Text "Could not find " ':<>: 'ShowType labels)
+
+-- | Type level key lookup
+type family (m :: [Mapping Symbol Type]) :! (c :: Symbol) :: Type where
+  (label ::: a ': rest) :! label = a
+  (attr ': rest) :! label = rest :! label
+  '[] :! label = TypeError ('Text "Could not find " ':<>: 'ShowType label)
+
+-- | Type level multi-key lookup from a map (O(n^2))
+type family (m :: [Mapping Symbol Type]) :!! (cs :: [Symbol]) :: [Mapping Symbol Type] where
+  m :!! (label ': ls) = (label ::: (m :! label)) ': (m :!! ls)
+  m :!! '[] = '[]
+
+type family UnNest t where
+  UnNest (l ::: Query ts tables) = ts
+  UnNest (l ::: t) = TypeError ('ShowType (l ::: t) ':<>: 'Text " is not relation valued")
+  UnNest x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
+
+data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
+  Identity :: ((tables :! name) ~ Table heading k v, KnownSymbol name) => Var name -> Table heading k v -> Query heading tables
+  Rename :: forall a b t tables. Var a -> Var b -> Query t tables -> Query (Rename a b t) tables
+  Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
+  Project :: (Submap t' t) => Query t tables -> Query t' tables
+  Join :: Query t' tables -> Query t tables -> Query (Union t' t) tables
+  Union :: Query t tables -> Query t tables -> Query t tables
+  Intersection :: Query t tables -> Query t tables -> Query t tables
+  Difference :: Query t tables -> Query t tables -> Query t tables
   Extend ::
-    forall l a t.
-    (NonMember (l ::: a) t) =>
+    forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
+    (Member l t ~ 'False) =>
+    Var l ->
     (Tuple t -> a) ->
-    Query t ->
-    Query (Sort (l ::: a ': t))
+    Query t tables ->
+    Query (Sort (l ::: a ': t)) tables
   Summarize ::
-    forall l a t t'.
-    (Subset t' t, NonMember (l ::: a) t') =>
-    Query t' ->
+    forall l a t t' tables.
+    (Submap t' t, Member l t' ~ 'False) =>
+    Var l ->
+    Query t' tables ->
     Fold (Tuple t') a ->
-    Query t ->
-    Query (Sort (l ::: a ': t'))
+    Query t tables ->
+    Query (Sort (l ::: a ': t')) tables
   Group ::
-    forall l attrs t.
-    Query t ->
-    Query (Sort (l ::: Query (LookupKey (AsSet attrs) (AsSet t)) ': RemoveAttrs (AsSet attrs) (AsSet t)))
+    forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]) tables.
+    Var l ->
+    Proxy attrs ->
+    Query t tables ->
+    Query (Sort (l ::: Query (AsMap t :!! AsSet attrs) tables ': AsSet t :\\ AsSet attrs)) tables
   Ungroup ::
-    forall l t.
-    Query t ->
-    Query (Sort (UnNest (Get l t) :++ RemoveAttrs '[l] t))
+    forall l t tables.
+    Var l ->
+    Query t tables ->
+    Query (Sort (UnNest (l ::: (t :! l)) :++ t :\ l)) tables
 
-instance (Typeable heading) => Show (Query heading) where
+instance (Typeable heading) => Show (Query heading tables) where
   show _ = "\nTODO Show contents" & go (typeRep @heading)
     where
       go :: TypeRep a -> ShowS
@@ -105,192 +158,75 @@ instance (Typeable heading) => Show (Query heading) where
           ("(" <>) . go nested . (")" <>)
       go other = shows other
 
-type family RemoveAttrs (labels :: [Symbol]) (t :: [Type]) :: [Type] where
-  RemoveAttrs (label ': ls) (label ::: a ': rest) = RemoveAttrs ls rest
-  RemoveAttrs (label ': ls) (a ': rest) = a ': RemoveAttrs (label ': ls) rest
-  RemoveAttrs '[] tuple = tuple
-  RemoveAttrs labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
+lookp' ::
+  forall (label :: Symbol) (m :: [Mapping Symbol Type]) (t :: Type).
+  (IsMember label t m, t ~ (m :! label)) =>
+  Var label ->
+  Tuple m ->
+  t
+lookp' = lookp
 
-type family RemoveAttr (label :: Symbol) (t :: [Type]) :: [Type] where
-  RemoveAttr label (label ::: a ': rest) = rest
-  RemoveAttr label (x ': rest) = x ': RemoveAttr label rest
-  RemoveAttr label '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType label)
+-- | Non type-changing update with nicer argument order
+update' :: forall v t m. (Updatable v t m m, t ~ (m :! v)) => Var v -> t -> Tuple m -> Tuple m
+update' v x m = update m v x
 
-class RemoveLabel (label :: Symbol) (t :: [Type]) where
-  removeLabel :: Tuple t -> Tuple (RemoveAttr label t)
+-- asMap' :: forall (l :: [Symbol]) (s :: [Mapping Symbol Type]). _
+-- asMap' = asMap
 
-instance {-# OVERLAPPABLE #-} RemoveLabel label (label ::: a ': rest) where
-  removeLabel (Ext _ rest) = rest
-
-instance {-# OVERLAPS #-} RemoveLabel label rest => RemoveLabel label (label' ::: a ': rest) where
-  removeLabel :: Tuple (label' ::: a ': rest) -> Tuple (RemoveAttr label (label' ::: a ': rest))
-  removeLabel (Ext x rest) = unsafeCoerce $ Ext x (removeLabel @label rest)
-
-type family LookupKey (labels :: [Symbol]) (t :: [Type]) :: [Type] where
-  LookupKey (label ': ls) (label ::: a ': rest) = label ::: a ': LookupKey ls rest
-  LookupKey (label ': ls) (a ': rest) = LookupKey (label ': ls) rest
-  LookupKey '[] tuple = '[]
-  LookupKey labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
-
-type family IsKey (labels :: [Symbol]) (t :: [Type]) :: Constraint where
-  IsKey (label ': ls) (label ::: a ': rest) = IsKey ls rest
-  IsKey (label ': ls) (a ': rest) = IsKey (label ': ls) rest
-  IsKey '[] tuple = ()
-  IsKey labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
-
-type family Get (label :: Symbol) (t :: [Type]) :: Type where
-  Get label (label ::: a ': rest) = label ::: a
-  Get label (attr ': rest) = Get label rest
-  Get label '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType label)
-
-class Index label attrs where
-  index :: Tuple attrs -> GetAttr (Get label attrs)
-
-instance {-# OVERLAPPABLE #-} Index label (label ::: a ': rest) where
-  index (Ext attr _) = getAttr attr
-
-instance {-# OVERLAPS #-} Index label attrs => Index label (attr ': attrs) where
-  -- Worrying, but appears to work fine?
-  index (Ext _ rest) = unsafeCoerce $ index @label rest
-
-type family UnNest t where
-  UnNest (l ::: Query ts) = ts
-  UnNest (l ::: t) = TypeError ( 'ShowType (l ::: t) ':<>: 'Text " is not relation valued")
-  UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
-
-type family Rename (a :: Symbol) (b :: Symbol) (t :: [Type]) :: [Type] where
-  Rename a b '[] = '[]
-  Rename a b (a ::: t ': rest) = b ::: t ': rest
-  Rename a b (c ': rest) = c ': Rename a b rest
-
--- The running example
--- ╔═════════════════════════════════════════════════════════════════╗
--- ║     S                                          SP               ║
--- ║    ┌────┬───────┬────────┬────────┐           ┌────┬────┬─────┐ ║
--- ║    │ S# │ SNAME │ STATUS │ CITY   │           │ S# │ P# │ QTY │ ║
--- ║    ├════┼───────┼────────┼────────┤           ├════┼════┼─────┤ ║
--- ║    │ S1 │ Smith │     20 │ London │           │ S1 │ P1 │ 300 │ ║
--- ║    │ S2 │ Jones │     10 │ Paris  │           │ S1 │ P2 │ 200 │ ║
--- ║    │ S3 │ Blake │     30 │ Paris  │           │ S1 │ P3 │ 400 │ ║
--- ║    │ S4 │ Clark │     20 │ London │           │ S1 │ P4 │ 200 │ ║
--- ║    │ S5 │ Adams │     30 │ Athens │           │ S1 │ P5 │ 100 │ ║
--- ║    └────┴───────┴────────┴────────┘           │ S1 │ P6 │ 100 │ ║
--- ║     P                                         │ S2 │ P1 │ 300 │ ║
--- ║    ┌────┬───────┬───────┬────────┬────────┐   │ S2 │ P2 │ 400 │ ║
--- ║    │ P# │ PNAME │ COLOR │ WEIGHT │ CITY   │   │ S3 │ P2 │ 200 │ ║
--- ║    ├════┼───────┼───────┼────────┼────────┤   │ S4 │ P2 │ 200 │ ║
--- ║    │ P1 │ Nut   │ Red   │   12.0 │ London │   │ S4 │ P4 │ 300 │ ║
--- ║    │ P2 │ Bolt  │ Green │   17.0 │ Paris  │   │ S4 │ P5 │ 400 │ ║
--- ║    │ P3 │ Screw │ Blue  │   17.0 │ Oslo   │   └────┴────┴─────┘ ║
--- ║    │ P4 │ Screw │ Red   │   14.0 │ London │                     ║
--- ║    │ P5 │ Cam   │ Blue  │   12.0 │ Paris  │                     ║
--- ║    │ P6 │ Cog   │ Red   │   19.0 │ London │                     ║
--- ║    └────┴───────┴───────┴────────┴────────┘                     ║
--- ╚═════════════════════════════════════════════════════════════════╝
-
--- VAR S REAL RELATION  { S# S#, SNAME NAME, STATUS INTEGER, CITY CHAR } KEY { S# } ;
--- VAR P REAL RELATION  { P# P#, PNAME NAME, COLOR COLOR, WEIGHT WEIGHT, CITY CHAR } KEY { P# } ;
--- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
-
-type SHeading = '["S#" ::: Int, "SNAME" ::: String, "STATUS" ::: Int, "CITY" ::: String]
-
-s :: Query SHeading
-s = Identity (MkTable @'["S#"])
-
-data Color = Red | Green | Blue deriving (Show, Eq)
-
-type PHeading = '["P#" ::: Int, "PNAME" ::: String, "COLOR" ::: Color, "WEIGHT" ::: Double, "CITY" ::: String]
-
-p :: Query PHeading
-p = Identity (MkTable @'["P#"])
-
-type SPHeading = '["S#" ::: Int, "P#" ::: Int, "QTY" ::: Int]
-
-sp :: Query SPHeading
-sp = Identity (MkTable @'["S#", "P#"])
-
-extendEx = s & Extend @"TRIPLE" (\t -> index @"STATUS" t * 3)
-
-summarizeEx = sp & Summarize @"P_COUNT" (Project @'["S#"] s) L.length
-
-groupEx = sp & Group @"PQ" @'["P#", "QTY"]
-
-ungroupEx = groupEx & Ungroup @"PQ"
-
-renameEx = s & Rename @"S#" @"id"
-
-data Table heading key where
-  MkTable ::
-    forall (key :: [Symbol]) (heading :: [Type]).
-    (IsKey (AsSet key) (AsSet heading)) =>
-    Table heading key
-
-type family TableHeading table where
-  TableHeading (Table heading key) = heading
-  TableHeading a = TypeError ( 'Text "Can only call 'TableHeading' on Table, not " ':$$: 'ShowType a)
-
-data Database tables where
+data Database (tables :: [Mapping Symbol Type]) where
   EmptyDB :: Database '[]
   CreateTable ::
-    forall name heading key tables.
-    Table heading key ->
+    (Member name tables ~ 'False, KnownSymbol name) =>
+    Var name ->
+    Table heading k v ->
     Database tables ->
-    Database ((name ::: Table heading key) ': tables)
+    Database ((name ::: Table heading k v) ': tables)
   DeleteTable ::
-    forall (name :: Symbol) tables.
+    forall (name :: Symbol) tables remaining.
+    (KnownSymbol name, Member name tables ~ 'True, (tables :\ name) ~ remaining) =>
+    Var name ->
     Database tables ->
-    Database (RemoveAttr name tables)
+    Database remaining
   Insert ::
-    forall (name :: Symbol) (tables :: [Type]).
-    Tuple (TableHeading (GetAttr (Get name tables))) ->
+    ((tables :! name) ~ Table heading k v, KnownSymbol name) =>
+    Var name ->
+    Table heading k v ->
+    Tuple heading ->
     Database tables ->
     Database tables
 
-db =
-  EmptyDB
-    & CreateTable @"Supplier" (MkTable @'["S#"] @SHeading)
-    & CreateTable @"Part" (MkTable @'["P#"] @PHeading)
-    & CreateTable @"SP" (MkTable @'["S#", "P#"] @SPHeading)
-    & Insert @"Supplier" (Ext (A 1) $ Ext (A "Smith") $ Ext (A 20) $ Ext (A "London") Empty)
-    & Insert @"Supplier" (Ext (A 2) $ Ext (A "Jones") $ Ext (A 10) $ Ext (A "Paris") Empty)
-    & Insert @"Supplier" (Ext (A 3) $ Ext (A "Blake") $ Ext (A 30) $ Ext (A "Paris") Empty)
-    & Insert @"Supplier" (Ext (A 4) $ Ext (A "Clark") $ Ext (A 20) $ Ext (A "London") Empty)
-    & Insert @"Supplier" (Ext (A 5) $ Ext (A "Adams") $ Ext (A 30) $ Ext (A "Athens") Empty)
-    & Insert @"Part" (Ext (A 1) $ Ext (A "Nut") $ Ext (A Red) $ Ext (A 12) $ Ext (A "London") Empty)
-    & Insert @"Part" (Ext (A 2) $ Ext (A "Bolt") $ Ext (A Green) $ Ext (A 17) $ Ext (A "Paris") Empty)
-    & Insert @"Part" (Ext (A 3) $ Ext (A "Screw") $ Ext (A Blue) $ Ext (A 17) $ Ext (A "Oslo") Empty)
-    & Insert @"Part" (Ext (A 4) $ Ext (A "Screw") $ Ext (A Red) $ Ext (A 14) $ Ext (A "London") Empty)
-    & Insert @"Part" (Ext (A 5) $ Ext (A "Cam") $ Ext (A Blue) $ Ext (A 12) $ Ext (A "Paris") Empty)
-    & Insert @"Part" (Ext (A 6) $ Ext (A "Cog") $ Ext (A Red) $ Ext (A 19) $ Ext (A "London") Empty)
-    & Insert @"SP" (Ext (A 1) $ Ext (A 1) $ Ext (A 300) Empty)
-    & Insert @"SP" (Ext (A 1) $ Ext (A 2) $ Ext (A 200) Empty)
-    & Insert @"SP" (Ext (A 1) $ Ext (A 3) $ Ext (A 400) Empty)
-    & Insert @"SP" (Ext (A 1) $ Ext (A 4) $ Ext (A 200) Empty)
-    & Insert @"SP" (Ext (A 1) $ Ext (A 5) $ Ext (A 100) Empty)
-    & Insert @"SP" (Ext (A 1) $ Ext (A 6) $ Ext (A 100) Empty)
-    & Insert @"SP" (Ext (A 2) $ Ext (A 1) $ Ext (A 300) Empty)
-    & Insert @"SP" (Ext (A 2) $ Ext (A 2) $ Ext (A 400) Empty)
-    & Insert @"SP" (Ext (A 3) $ Ext (A 2) $ Ext (A 200) Empty)
-    & Insert @"SP" (Ext (A 4) $ Ext (A 2) $ Ext (A 200) Empty)
-    & Insert @"SP" (Ext (A 4) $ Ext (A 4) $ Ext (A 300) Empty)
-    & Insert @"SP" (Ext (A 4) $ Ext (A 5) $ Ext (A 400) Empty)
+type family TableHeading table :: [Mapping Symbol Type] where
+  TableHeading (Table heading k v) = heading
+  TableHeading a = TypeError ('Text "Can only call 'TableHeading' on Table, not " ':$$: 'ShowType a)
 
-runQuery :: Query t -> Database tables -> [Tuple t]
-runQuery q db = []
+runQuery ::
+  forall t tables1 tables2.
+  (Sort tables1 ~ Sort tables2) =>
+  Query t tables1 ->
+  Database tables2 ->
+  [Tuple t]
+runQuery q db =
+  let mem = materializeDB db
+   in case q of
+        Identity name (MkTable :: Table heading k v) ->
+          M.toList (mem M.! str name) & map \(k, v) -> (decode k :: Tuple k) `union` (decode v :: Tuple v)
+        Rename Var Var q' -> unsafeCoerce $ runQuery q' db
+        Restrict pred q' -> filter pred (runQuery q' db)
+        Project q' -> map submap (runQuery q' db)
+        -- Join q1 q2 ->
+        _ -> []
 
-type family TableMap table where
-  TableMap (name ::: Table heading key) = name ::: Map (Tuple key) (Tuple heading)
+materializeDB :: forall tables. Database tables -> M.Map String (M.Map LByteString LByteString)
+materializeDB EmptyDB = mempty
+materializeDB (CreateTable name MkTable rest) =
+  M.insert (str name) mempty (materializeDB rest)
+materializeDB (DeleteTable name rest) = M.delete (str name) (materializeDB rest)
+materializeDB (Insert name (MkTable :: Table heading k v) t rest) =
+  M.update (Just . M.insert (encode key) (encode val)) (str name) (materializeDB rest)
+  where
+    kv :: (Split k v heading) => (Tuple k, Tuple v)
+    kv = split t
+    (key, val) = kv
 
-type family Maps tables where
-  Maps '[] = '[]
-  Maps (t ': ts) = TableMap t ': Maps ts
-
-type family OrdKeys (tables :: [Type]) :: Constraint where
-  OrdKeys '[] = ()
-  OrdKeys (name ::: Table heading key ': ts) = (Ord (Tuple key), OrdKeys ts)
-
-materializeDB :: (OrdKeys tables) => Database tables -> Tuple (Maps tables)
-materializeDB EmptyDB = Empty
-materializeDB (CreateTable MkTable rest) = Ext (A mempty) (materializeDB rest)
--- TODO: Use "visible type application in patterns" once GHC 9.2 is viable
--- materializeDB (DeleteTable (rest :: Database (RemoveAttr name tables))) = removeLabel @name (materializeDB rest)
+str :: forall k. KnownSymbol k => Var k -> String
+str Var = symbolVal (Proxy @k)
