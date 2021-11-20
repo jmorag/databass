@@ -3,7 +3,8 @@
 -- | Embedding of relational model as per chapter 2 of third manifesto
 module QueryLanguage.Fancy where
 
-import Control.Foldl (Fold)
+import qualified Control.Foldl as L
+import Control.Lens (Lens, Lens', lens)
 import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
@@ -87,6 +88,11 @@ type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [
   Rename a b ((a ::: t) ': rest) = (b ::: t) ': rest
   Rename a b (c ': rest) = c ': Rename a b rest
 
+type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
+  ChangeType l a (l ::: b ': rest) = l ::: a ': rest
+  ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
+  ChangeType l a '[] = '[]
+
 -- | Delete multiple elements from a map by key
 type family (m :: [Mapping Symbol Type]) :\\ (cs :: [Symbol]) :: [Mapping Symbol Type] where
   (label ::: a ': rest) :\\ (label ': ls) = rest :\\ ls
@@ -131,7 +137,7 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     (Submap t' t, Member l t' ~ 'False) =>
     Var l ->
     Query t' tables ->
-    Fold (Tuple t') a ->
+    L.Fold (Tuple t') a ->
     Query t tables ->
     Query (Sort (l ::: a ': t')) tables
   Group ::
@@ -158,17 +164,17 @@ instance (Typeable heading) => Show (Query heading tables) where
           ("(" <>) . go nested . (")" <>)
       go other = shows other
 
-lookp' ::
-  forall (label :: Symbol) (m :: [Mapping Symbol Type]) (t :: Type).
-  (IsMember label t m, t ~ (m :! label)) =>
+-- | Lens for getting a column out of a tuple
+col ::
+  forall (label :: Symbol) (m :: [Mapping Symbol Type]) (n :: [Mapping Symbol Type]) (t :: Type) (t' :: Type).
+  ( IsMember label t m,
+    t ~ (m :! label),
+    Updatable label t' m n,
+    ChangeType label t' m ~ n
+  ) =>
   Var label ->
-  Tuple m ->
-  t
-lookp' = lookp
-
--- | Non type-changing update with nicer argument order
-update' :: forall v t m. (Updatable v t m m, t ~ (m :! v)) => Var v -> t -> Tuple m -> Tuple m
-update' v x m = update m v x
+  Lens (Tuple m) (Tuple n) t t'
+col var = lens (lookp var) (`update` var)
 
 -- asMap' :: forall (l :: [Symbol]) (s :: [Mapping Symbol Type]). _
 -- asMap' = asMap
