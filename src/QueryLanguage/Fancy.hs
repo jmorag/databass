@@ -138,9 +138,9 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t' tables ->
     Query t tables ->
     Query (common :++ (t'_rest :++ t_rest)) tables
-  Union :: Query t tables -> Query t tables -> Query t tables
+  -- Union :: Query t tables -> Query t tables -> Query t tables
   -- Intersection :: Query t tables -> Query t tables -> Query t tables
-  Difference :: Query t tables -> Query t tables -> Query t tables
+  -- Difference :: Query t tables -> Query t tables -> Query t tables
   Extend ::
     forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
     (Member l t ~ 'False) =>

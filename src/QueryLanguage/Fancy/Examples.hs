@@ -9,7 +9,7 @@ import Data.Type.Set (Sort)
 import GHC.TypeLits
 import QueryLanguage.Fancy
 import QueryLanguage.Fancy.API
-import Relude hiding (Identity)
+import Relude hiding (Identity, group)
 
 -- The running example
 -- ╔═════════════════════════════════════════════════════════════════╗
@@ -72,17 +72,17 @@ fancyQuery = s & project @'["CITY", "STATUS"] & Restrict (\t -> t ^. col @"STATU
 
 extendEx = s & Extend (Var @"TRIPLE") (\t -> t ^. col @"STATUS" * 3)
 
-summarizeEx = sp & Summarize (Var @"P_COUNT") (Project @'["S#" ::: Int] s) L.length
+summarizeEx = sp & summarize @"P_COUNT" (project @'["S#"] s) L.length
 
-projectEx = s & Project @'["S#" ::: Int]
+projectEx = s & project @'["S#"]
 
-groupEx = sp & Group (Var @"PQ") (Proxy @'["P#", "QTY"])
+groupEx = sp & group @"PQ" @'["P#", "QTY"]
 
-ungroupEx = groupEx & Ungroup (Var @"PQ")
+ungroupEx = groupEx & ungroup @"PQ"
 
-renameEx = s & Rename (Var @"S#") (Var @"id")
+renameEx = s & rename @"S#" @"id"
 
-joinEx = Join s p
+joinEx = s >< p
 
 sTup1, sTup2 :: Tuple (AsMap SHeading)
 sTup1 = asMap @SHeading $ 1 <| "Smith" <| 20 <| "London" <| Empty
