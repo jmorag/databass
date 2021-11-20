@@ -142,11 +142,10 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     , Submap t_rest t
     , t'_rest ~ (t' :\\ GetLabels common)
     , t_rest ~ (t :\\ GetLabels common)
-    , Sortable (common :++ (t'_rest :++ t_rest))
     ) =>
     Query t' tables ->
     Query t tables ->
-    Query (Sort (common :++ (t'_rest :++ t_rest))) tables
+    Query (common :++ (t'_rest :++ t_rest)) tables
   Union :: Query t tables -> Query t tables -> Query t tables
   -- Intersection :: Query t tables -> Query t tables -> Query t tables
   Difference :: Query t tables -> Query t tables -> Query t tables
@@ -255,7 +254,7 @@ runQuery q mem = case q of
         l_rest = submap @(t_l :\\ GetLabels (Intersection t_l t_r)) l
         r_rest = submap @(t_r :\\ GetLabels (Intersection t_l t_r)) r
     guard (l_common == r_common)
-    pure (quicksort (append l_common (append l_rest r_rest)))
+    pure (append l_common (append l_rest r_rest))
   _ -> []
 
 materializeDB :: forall tables. Database tables -> MemDB tables
