@@ -49,16 +49,16 @@ instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
 
 type family GetAttr attr where
   GetAttr (l ::: a) = a
-  GetAttr x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
+  GetAttr x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family GetLabel attr where
   GetLabel (l ::: a) = l
-  GetLabel x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
+  GetLabel x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family GetLabels attrs where
   GetLabels '[] = '[]
   GetLabels (l ::: a ': xs) = l ': GetLabels xs
-  GetLabels x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
+  GetLabels x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family T heading (key :: [Symbol]) where
   T heading key = Table (AsMap heading) (AsMap heading :!! AsSet key) (AsMap heading :\\ AsSet key)
@@ -81,7 +81,7 @@ type family IsKey (labels :: [Symbol]) (t :: [Mapping Symbol Type]) :: Constrain
   IsKey (label ': ls) (label ::: a ': rest) = IsKey ls rest
   IsKey (label ': ls) (a ': rest) = IsKey (label ': ls) rest
   IsKey '[] tuple = ()
-  IsKey labels '[] = TypeError ('Text "Could not find " ':<>: 'ShowType labels)
+  IsKey labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
 
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
   Rename a b '[] = '[]
@@ -98,13 +98,13 @@ type family (m :: [Mapping Symbol Type]) :\\ (cs :: [Symbol]) :: [Mapping Symbol
   (label ::: a ': rest) :\\ (label ': ls) = rest :\\ ls
   (a ': rest) :\\ (label ': ls) = a ': rest :\\ (label ': ls)
   tuple :\\ '[] = tuple
-  '[] :\\ labels = TypeError ('Text "Could not find " ':<>: 'ShowType labels)
+  '[] :\\ labels = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
 
 -- | Type level key lookup
 type family (m :: [Mapping Symbol Type]) :! (c :: Symbol) :: Type where
   (label ::: a ': rest) :! label = a
   (attr ': rest) :! label = rest :! label
-  '[] :! label = TypeError ('Text "Could not find " ':<>: 'ShowType label)
+  '[] :! label = TypeError ( 'Text "Could not find " ':<>: 'ShowType label)
 
 -- | Type level multi-key lookup from a map (O(n^2))
 type family (m :: [Mapping Symbol Type]) :!! (cs :: [Symbol]) :: [Mapping Symbol Type] where
@@ -113,8 +113,8 @@ type family (m :: [Mapping Symbol Type]) :!! (cs :: [Symbol]) :: [Mapping Symbol
 
 type family UnNest t where
   UnNest (l ::: Query ts tables) = ts
-  UnNest (l ::: t) = TypeError ('ShowType (l ::: t) ':<>: 'Text " is not relation valued")
-  UnNest x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
+  UnNest (l ::: t) = TypeError ( 'ShowType (l ::: t) ':<>: 'Text " is not relation valued")
+  UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family Intersection t t' where
   Intersection t t' = Intersection' (Sort t) (Sort t')
@@ -274,3 +274,11 @@ materializeDB (Insert name (MkTable :: Table heading k v) t rest) =
 
 str :: forall k. KnownSymbol k => Var k -> String
 str Var = symbolVal (Proxy @k)
+
+project ::
+  forall (labels :: [Symbol]) heading heading' tables.
+  (Submap heading' heading, heading' ~ (heading :!! labels)) =>
+  Proxy labels ->
+  Query heading tables ->
+  Query heading' tables
+project Proxy = Project @heading'

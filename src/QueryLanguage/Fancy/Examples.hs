@@ -2,12 +2,13 @@
 module QueryLanguage.Fancy.Examples where
 
 import qualified Control.Foldl as L
+import Control.Lens hiding (Empty, Identity, (|>))
 import Data.Binary
 import Data.Type.Map
+import Data.Type.Set (Sort)
 import GHC.TypeLits
 import QueryLanguage.Fancy
 import Relude hiding (Identity)
-import Data.Type.Set (Sort)
 
 -- The running example
 -- ╔═════════════════════════════════════════════════════════════════╗
@@ -65,7 +66,10 @@ p = Identity (Var @"parts") MkTable
 sp :: Query _ Tables
 sp = Identity (Var @"suppliers-parts") MkTable
 
-extendEx = s & Extend (Var @"TRIPLE") (\t -> lookp' (Var @"STATUS") t * 3)
+fancyQuery :: Query _ Tables
+fancyQuery = s & project (Proxy @'["CITY", "STATUS"]) & Restrict (\t -> t ^. col (Var @"STATUS") < 30)
+
+extendEx = s & Extend (Var @"TRIPLE") (\t -> t ^. col (Var @"STATUS") * 3)
 
 summarizeEx = sp & Summarize (Var @"P_COUNT") (Project @'["S#" ::: Int] s) L.length
 
@@ -76,6 +80,20 @@ groupEx = sp & Group (Var @"PQ") (Proxy @'["P#", "QTY"])
 ungroupEx = groupEx & Ungroup (Var @"PQ")
 
 renameEx = s & Rename (Var @"S#") (Var @"id")
+
+joinEx = Join s p
+
+sTup1, sTup2 :: Tuple (AsMap SHeading)
+sTup1 = asMap @SHeading $ 1 |> "Smith" |> 20 |> "London" |> Empty
+sTup2 = asMap @SHeading $ 2 |> "Smith" |> 10 |> "Paris" |> Empty
+
+pTup1, pTup2 :: Tuple (AsMap PHeading)
+pTup1 = asMap @PHeading $ 1 |> "Nut" |> Red |> 12 |> "London" |> Empty
+pTup2 = asMap @PHeading $ 2 |> "Bolt" |> Green |> 17 |> "Paris" |> Empty
+
+spTup1, spTup2 :: Tuple (AsMap SPHeading)
+spTup1 = asMap @SPHeading $ 1 |> 1 |> 300 |> Empty
+spTup2 = asMap @SPHeading $ 1 |> 2 |> 200 |> Empty
 
 db =
   EmptyDB
@@ -123,7 +141,8 @@ db =
             4 |> 5 |> 400 |> Empty
           ]
       )
-    -- & DeleteTable (Var @"suppliers")
+
+-- & DeleteTable (Var @"suppliers")
 
 createTable ::
   ( IsHeading heading k v,
@@ -158,3 +177,5 @@ insertMany ::
   Database tables ->
   Database tables
 insertMany var tuples db = foldr (insert var) db tuples
+
+memDB = materializeDB db
