@@ -104,50 +104,50 @@ db =
       (Var @"suppliers")
       ( map
           (asMap @SHeading)
-          [ 1 |> "Smith" |> 20 |> "London" |> Empty,
-            2 |> "Jones" |> 10 |> "Paris" |> Empty,
-            3 |> "Blake" |> 30 |> "Paris" |> Empty,
-            4 |> "Clark" |> 20 |> "London" |> Empty,
-            5 |> "Adams" |> 30 |> "Athens" |> Empty
+          [ 1 |> "Smith" |> 20 |> "London" |> Empty
+          , 2 |> "Jones" |> 10 |> "Paris" |> Empty
+          , 3 |> "Blake" |> 30 |> "Paris" |> Empty
+          , 4 |> "Clark" |> 20 |> "London" |> Empty
+          , 5 |> "Adams" |> 30 |> "Athens" |> Empty
           ]
       )
     & insertMany
       (Var @"parts")
       ( map
           (asMap @PHeading)
-          [ 1 |> "Nut" |> Red |> 12 |> "London" |> Empty,
-            2 |> "Bolt" |> Green |> 17 |> "Paris" |> Empty,
-            3 |> "Screw" |> Blue |> 17 |> "Oslo" |> Empty,
-            4 |> "Screw" |> Red |> 14 |> "London" |> Empty,
-            5 |> "Cam" |> Blue |> 12 |> "Paris" |> Empty,
-            6 |> "Cog" |> Red |> 19 |> "London" |> Empty
+          [ 1 |> "Nut" |> Red |> 12 |> "London" |> Empty
+          , 2 |> "Bolt" |> Green |> 17 |> "Paris" |> Empty
+          , 3 |> "Screw" |> Blue |> 17 |> "Oslo" |> Empty
+          , 4 |> "Screw" |> Red |> 14 |> "London" |> Empty
+          , 5 |> "Cam" |> Blue |> 12 |> "Paris" |> Empty
+          , 6 |> "Cog" |> Red |> 19 |> "London" |> Empty
           ]
       )
     & insertMany
       (Var @"suppliers-parts")
       ( map
           (asMap @SPHeading)
-          [ 1 |> 1 |> 300 |> Empty,
-            1 |> 2 |> 200 |> Empty,
-            1 |> 3 |> 400 |> Empty,
-            1 |> 4 |> 200 |> Empty,
-            1 |> 5 |> 100 |> Empty,
-            1 |> 6 |> 100 |> Empty,
-            2 |> 1 |> 300 |> Empty,
-            2 |> 2 |> 400 |> Empty,
-            3 |> 2 |> 200 |> Empty,
-            4 |> 2 |> 200 |> Empty,
-            4 |> 4 |> 300 |> Empty,
-            4 |> 5 |> 400 |> Empty
+          [ 1 |> 1 |> 300 |> Empty
+          , 1 |> 2 |> 200 |> Empty
+          , 1 |> 3 |> 400 |> Empty
+          , 1 |> 4 |> 200 |> Empty
+          , 1 |> 5 |> 100 |> Empty
+          , 1 |> 6 |> 100 |> Empty
+          , 2 |> 1 |> 300 |> Empty
+          , 2 |> 2 |> 400 |> Empty
+          , 3 |> 2 |> 200 |> Empty
+          , 4 |> 2 |> 200 |> Empty
+          , 4 |> 4 |> 300 |> Empty
+          , 4 |> 5 |> 400 |> Empty
           ]
       )
 
 -- & DeleteTable (Var @"suppliers")
 
 createTable ::
-  ( IsHeading heading k v,
-    Member name tables ~ 'False,
-    KnownSymbol name
+  ( IsHeading heading k v
+  , Member name tables ~ 'False
+  , KnownSymbol name
   ) =>
   Proxy (name ::: Table heading k v) ->
   Database tables ->
@@ -156,9 +156,9 @@ createTable (Proxy :: Proxy (name ::: table)) =
   CreateTable (Var @name) (MkTable :: table)
 
 insert ::
-  ( IsHeading heading k v,
-    Table heading k v ~ (tables :! name),
-    KnownSymbol name
+  ( IsHeading heading k v
+  , Table heading k v ~ (tables :! name)
+  , KnownSymbol name
   ) =>
   Var name ->
   Tuple (TableHeading (tables :! name)) ->
@@ -167,10 +167,10 @@ insert ::
 insert var = Insert var MkTable
 
 insertMany ::
-  ( IsHeading heading k v,
-    Table heading k v ~ (tables :! name),
-    KnownSymbol name,
-    Foldable t
+  ( IsHeading heading k v
+  , Table heading k v ~ (tables :! name)
+  , KnownSymbol name
+  , Foldable t
   ) =>
   Var name ->
   t (Tuple (TableHeading (tables :! name))) ->

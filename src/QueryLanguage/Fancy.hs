@@ -64,14 +64,14 @@ type family T heading (key :: [Symbol]) where
   T heading key = Table (AsMap heading) (AsMap heading :!! AsSet key) (AsMap heading :\\ AsSet key)
 
 type IsHeading heading k v =
-  ( Submap k heading,
-    Submap v heading,
-    Split k v heading,
-    Unionable k v,
-    Union k v ~ heading,
-    Binary (Tuple heading),
-    Binary (Tuple k),
-    Binary (Tuple v)
+  ( Submap k heading
+  , Submap v heading
+  , Split k v heading
+  , Unionable k v
+  , Union k v ~ heading
+  , Binary (Tuple heading)
+  , Binary (Tuple k)
+  , Binary (Tuple v)
   )
 
 data Table heading k v where
@@ -134,15 +134,15 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
   Project :: (Submap t' t) => Query t tables -> Query t' tables
   Join ::
-    ( Eq (Tuple (Intersection t' t)),
-      common ~ Intersection t' t,
-      Submap common t',
-      Submap common t,
-      Submap t'_rest t',
-      Submap t_rest t,
-      t'_rest ~ (t' :\\ GetLabels common),
-      t_rest ~ (t :\\ GetLabels common),
-      Sortable (common :++ (t'_rest :++ t_rest))
+    ( Eq (Tuple (Intersection t' t))
+    , common ~ Intersection t' t
+    , Submap common t'
+    , Submap common t
+    , Submap t'_rest t'
+    , Submap t_rest t
+    , t'_rest ~ (t' :\\ GetLabels common)
+    , t_rest ~ (t :\\ GetLabels common)
+    , Sortable (common :++ (t'_rest :++ t_rest))
     ) =>
     Query t' tables ->
     Query t tables ->
@@ -192,10 +192,10 @@ instance (Typeable heading) => Show (Query heading tables) where
 -- | Lens for getting a column out of a tuple
 col ::
   forall (label :: Symbol) (m :: [Mapping Symbol Type]) (n :: [Mapping Symbol Type]) (t :: Type) (t' :: Type).
-  ( IsMember label t m,
-    t ~ (m :! label),
-    Updatable label t' m n,
-    ChangeType label t' m ~ n
+  ( IsMember label t m
+  , t ~ (m :! label)
+  , Updatable label t' m n
+  , ChangeType label t' m ~ n
   ) =>
   Var label ->
   Lens (Tuple m) (Tuple n) t t'
