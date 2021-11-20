@@ -93,12 +93,10 @@ type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) w
   ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
   ChangeType l a '[] = '[]
 
--- | Delete multiple elements from a map by key
+-- | Delete multiple elements from a map by key O(n^2)
 type family (m :: [Mapping Symbol Type]) :\\ (cs :: [Symbol]) :: [Mapping Symbol Type] where
-  (label ::: a ': rest) :\\ (label ': ls) = rest :\\ ls
-  (a ': rest) :\\ (label ': ls) = a ': rest :\\ (label ': ls)
-  tuple :\\ '[] = tuple
-  '[] :\\ labels = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
+  m :\\ (label ': ls) = (m :\ label) :\\ ls
+  m :\\ '[] = m
 
 -- | Type level key lookup
 type family (m :: [Mapping Symbol Type]) :! (c :: Symbol) :: Type where
@@ -106,7 +104,7 @@ type family (m :: [Mapping Symbol Type]) :! (c :: Symbol) :: Type where
   (attr ': rest) :! label = rest :! label
   '[] :! label = TypeError ( 'Text "Could not find " ':<>: 'ShowType label)
 
--- | Type level multi-key lookup from a map (O(n^2))
+-- | Type level multi-key lookup from a map O(n^2)
 type family (m :: [Mapping Symbol Type]) :!! (cs :: [Symbol]) :: [Mapping Symbol Type] where
   m :!! (label ': ls) = (label ::: (m :! label)) ': (m :!! ls)
   m :!! '[] = '[]
@@ -172,12 +170,12 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Var l ->
     Proxy attrs ->
     Query t tables ->
-    Query (Sort (l ::: Query (AsMap t :!! AsSet attrs) tables ': AsSet t :\\ AsSet attrs)) tables
+    Query (Sort (l ::: Query (t :!! attrs) tables ': (t :\\ attrs))) tables
   Ungroup ::
     forall l t tables.
     Var l ->
     Query t tables ->
-    Query (Sort (UnNest (l ::: (t :! l)) :++ t :\ l)) tables
+    Query (Sort (UnNest (l ::: (t :! l)) :++ (t :\ l))) tables
 
 instance (Typeable heading) => Show (Query heading tables) where
   show _ = "\nTODO Show contents" & go (typeRep @heading)
