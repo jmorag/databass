@@ -1,10 +1,13 @@
-module Main where
+-- |
+
+module DBMain (dbMain) where
+
 import BTree
 import Pipes
 import Data.ByteString.Lazy
 
-main :: IO ()
-main = print "Hello Joseph!"
+dbMain :: IO ()
+dbMain = print "Hello Joseph!"
 
 buildBTree :: IO (ByteString)
 buildBTree =
