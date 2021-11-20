@@ -1,1 +1,6 @@
 packages: .
+
+source-repository-package
+    type: git
+    location: https://github.com/jmorag/type-level-sets
+    tag: 5ca8df2dc3fdc92f123064cf621ce0668cd9e507
