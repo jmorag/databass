@@ -61,10 +61,10 @@ project ::
   Query heading' tables
 project = Project @heading'
 
-(|>) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
-(|>) = Ext (Var @k)
+(<|) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
+(<|) = Ext (Var @k)
 
-infixr 5 |>
+infixr 5 <|
 
 -- | Lens for getting a column out of a tuple
 col ::
