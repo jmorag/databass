@@ -116,14 +116,41 @@ type family UnNest t where
   UnNest (l ::: t) = TypeError ('ShowType (l ::: t) ':<>: 'Text " is not relation valued")
   UnNest x = TypeError ('ShowType x ':$$: 'Text " is not an attribute")
 
+type family Intersection t t' where
+  Intersection t t' = Intersection' (Sort t) (Sort t')
+
+type family Intersection' (t :: [Mapping Symbol Type]) (t' :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
+  Intersection' t '[] = '[]
+  Intersection' '[] t = '[]
+  Intersection' (a ': as) (a ': bs) = a ': Intersection' as bs
+  Intersection' (l ::: a ': as) (r ::: b ': bs) = Intersection'Case (CmpSymbol l r) l r a as b bs
+
+type family Intersection'Case (ordering :: Ordering) l r a as b bs where
+  Intersection'Case 'LT l r a as b bs = Intersection' as (r ::: b ': bs)
+  Intersection'Case 'GT l r a as b bs = Intersection' (l ::: a ': as) bs
+  Intersection'Case 'EQ l r a as b bs = TypeError ( 'Text "Unreachable, oh god please")
+
 data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   Identity :: ((tables :! name) ~ Table heading k v, KnownSymbol name) => Var name -> Table heading k v -> Query heading tables
   Rename :: forall a b t tables. Var a -> Var b -> Query t tables -> Query (Rename a b t) tables
   Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
   Project :: (Submap t' t) => Query t tables -> Query t' tables
-  Join :: Query t' tables -> Query t tables -> Query (Union t' t) tables
+  Join ::
+    ( Eq (Tuple (Intersection t' t)),
+      common ~ Intersection t' t,
+      Submap common t',
+      Submap common t,
+      Submap t'_rest t',
+      Submap t_rest t,
+      t'_rest ~ (t' :\\ GetLabels common),
+      t_rest ~ (t :\\ GetLabels common),
+      Sortable (common :++ (t'_rest :++ t_rest))
+    ) =>
+    Query t' tables ->
+    Query t tables ->
+    Query (Sort (common :++ (t'_rest :++ t_rest))) tables
   Union :: Query t tables -> Query t tables -> Query t tables
-  Intersection :: Query t tables -> Query t tables -> Query t tables
+  -- Intersection :: Query t tables -> Query t tables -> Query t tables
   Difference :: Query t tables -> Query t tables -> Query t tables
   Extend ::
     forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
@@ -203,32 +230,43 @@ data Database (tables :: [Mapping Symbol Type]) where
 
 type family TableHeading table :: [Mapping Symbol Type] where
   TableHeading (Table heading k v) = heading
-  TableHeading a = TypeError ('Text "Can only call 'TableHeading' on Table, not " ':$$: 'ShowType a)
+  TableHeading a = TypeError ( 'Text "Can only call 'TableHeading' on Table, not " ':$$: 'ShowType a)
+
+newtype MemDB tables = MemDB {getMemDB :: M.Map String (M.Map LByteString LByteString)}
+  deriving (Show)
 
 runQuery ::
-  forall t tables1 tables2.
-  (Sort tables1 ~ Sort tables2) =>
-  Query t tables1 ->
-  Database tables2 ->
+  forall t tables tables'.
+  (Sort tables ~ Sort tables') =>
+  Query t tables ->
+  MemDB tables' ->
   [Tuple t]
-runQuery q db =
-  let mem = materializeDB db
-   in case q of
-        Identity name (MkTable :: Table heading k v) ->
-          M.toList (mem M.! str name) & map \(k, v) -> (decode k :: Tuple k) `union` (decode v :: Tuple v)
-        Rename Var Var q' -> unsafeCoerce $ runQuery q' db
-        Restrict pred q' -> filter pred (runQuery q' db)
-        Project q' -> map submap (runQuery q' db)
-        -- Join q1 q2 ->
-        _ -> []
+runQuery q mem = case q of
+  Identity name (MkTable :: Table heading k v) ->
+    M.toList (getMemDB mem M.! str name) & map \(k, v) -> (decode k :: Tuple k) `union` (decode v :: Tuple v)
+  Rename Var Var q' -> unsafeCoerce $ runQuery q' mem
+  Restrict pred q' -> filter pred (runQuery q' mem)
+  Project q' -> map submap (runQuery q' mem)
+  Join q1 q2 -> do
+    l :: Tuple t_l <- runQuery q1 mem
+    r :: Tuple t_r <- runQuery q2 mem
+    let l_common = submap @(Intersection t_l t_r) l
+        r_common = submap @(Intersection t_l t_r) r
+        l_rest = submap @(t_l :\\ GetLabels (Intersection t_l t_r)) l
+        r_rest = submap @(t_r :\\ GetLabels (Intersection t_l t_r)) r
+    guard (l_common == r_common)
+    pure (quicksort (append l_common (append l_rest r_rest)))
+  _ -> []
 
-materializeDB :: forall tables. Database tables -> M.Map String (M.Map LByteString LByteString)
-materializeDB EmptyDB = mempty
+materializeDB :: forall tables. Database tables -> MemDB tables
+materializeDB EmptyDB = MemDB mempty
 materializeDB (CreateTable name MkTable rest) =
-  M.insert (str name) mempty (materializeDB rest)
-materializeDB (DeleteTable name rest) = M.delete (str name) (materializeDB rest)
+  MemDB $
+    M.insert (str name) mempty (getMemDB (materializeDB rest))
+materializeDB (DeleteTable name rest) = MemDB $ M.delete (str name) (getMemDB $ materializeDB rest)
 materializeDB (Insert name (MkTable :: Table heading k v) t rest) =
-  M.update (Just . M.insert (encode key) (encode val)) (str name) (materializeDB rest)
+  MemDB $
+    M.update (Just . M.insert (encode key) (encode val)) (str name) (getMemDB $ materializeDB rest)
   where
     kv :: (Split k v heading) => (Tuple k, Tuple v)
     kv = split t
