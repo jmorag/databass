@@ -8,6 +8,7 @@ import Data.Type.Map
 import Data.Type.Set (Sort)
 import GHC.TypeLits
 import QueryLanguage.Fancy
+import QueryLanguage.Fancy.API
 import Relude hiding (Identity)
 
 -- The running example
@@ -58,18 +59,18 @@ type SP = "suppliers-parts" ::: T SPHeading '["S#", "P#"]
 type Tables = AsMap '[Suppliers, Parts, SP]
 
 s :: Query _ Tables
-s = Identity (Var @"suppliers") MkTable
+s = table @"suppliers"
 
 p :: Query _ Tables
-p = Identity (Var @"parts") MkTable
+p = table @"parts"
 
 sp :: Query _ Tables
-sp = Identity (Var @"suppliers-parts") MkTable
+sp = table @"suppliers-parts" @Tables
 
 fancyQuery :: Query _ Tables
-fancyQuery = s & project (Proxy @'["CITY", "STATUS"]) & Restrict (\t -> t ^. col (Var @"STATUS") < 30)
+fancyQuery = s & project @'["CITY", "STATUS"] & Restrict (\t -> t ^. col @"STATUS" < 30)
 
-extendEx = s & Extend (Var @"TRIPLE") (\t -> t ^. col (Var @"STATUS") * 3)
+extendEx = s & Extend (Var @"TRIPLE") (\t -> t ^. col @"STATUS" * 3)
 
 summarizeEx = sp & Summarize (Var @"P_COUNT") (Project @'["S#" ::: Int] s) L.length
 
@@ -97,11 +98,10 @@ spTup2 = asMap @SPHeading $ 1 |> 2 |> 200 |> Empty
 
 db =
   EmptyDB
-    & createTable (Proxy @Suppliers)
-    & createTable (Proxy @Parts)
-    & createTable (Proxy @SP)
-    & insertMany
-      (Var @"suppliers")
+    & createTable @Suppliers
+    & createTable @Parts
+    & createTable @SP
+    & insertMany @"suppliers"
       ( map
           (asMap @SHeading)
           [ 1 |> "Smith" |> 20 |> "London" |> Empty
@@ -111,8 +111,7 @@ db =
           , 5 |> "Adams" |> 30 |> "Athens" |> Empty
           ]
       )
-    & insertMany
-      (Var @"parts")
+    & insertMany @"parts"
       ( map
           (asMap @PHeading)
           [ 1 |> "Nut" |> Red |> 12 |> "London" |> Empty
@@ -123,8 +122,7 @@ db =
           , 6 |> "Cog" |> Red |> 19 |> "London" |> Empty
           ]
       )
-    & insertMany
-      (Var @"suppliers-parts")
+    & insertMany @"suppliers-parts"
       ( map
           (asMap @SPHeading)
           [ 1 |> 1 |> 300 |> Empty
@@ -143,39 +141,5 @@ db =
       )
 
 -- & DeleteTable (Var @"suppliers")
-
-createTable ::
-  ( IsHeading heading k v
-  , Member name tables ~ 'False
-  , KnownSymbol name
-  ) =>
-  Proxy (name ::: Table heading k v) ->
-  Database tables ->
-  Database (name ::: Table heading k v ': tables)
-createTable (Proxy :: Proxy (name ::: table)) =
-  CreateTable (Var @name) (MkTable :: table)
-
-insert ::
-  ( IsHeading heading k v
-  , Table heading k v ~ (tables :! name)
-  , KnownSymbol name
-  ) =>
-  Var name ->
-  Tuple (TableHeading (tables :! name)) ->
-  Database tables ->
-  Database tables
-insert var = Insert var MkTable
-
-insertMany ::
-  ( IsHeading heading k v
-  , Table heading k v ~ (tables :! name)
-  , KnownSymbol name
-  , Foldable t
-  ) =>
-  Var name ->
-  t (Tuple (TableHeading (tables :! name))) ->
-  Database tables ->
-  Database tables
-insertMany var tuples db = foldr (insert var) db tuples
 
 memDB = materializeDB db

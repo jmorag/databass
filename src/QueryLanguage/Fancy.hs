@@ -4,7 +4,6 @@
 module QueryLanguage.Fancy where
 
 import qualified Control.Foldl as L
-import Control.Lens (Lens, Lens', lens)
 import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
@@ -14,14 +13,8 @@ import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
 import Relude hiding (Identity, Map, get, put, undefined)
-import Type.Reflection
 import Unsafe.Coerce (unsafeCoerce)
 import qualified Prelude as P
-
-(|>) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
-(|>) = Ext (Var @k)
-
-infixr 5 |>
 
 type Tuple = Map
 
@@ -86,6 +79,7 @@ type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [
   Rename a b ((a ::: t) ': rest) = (b ::: t) ': rest
   Rename a b (c ': rest) = c ': Rename a b rest
 
+-- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
   ChangeType l a (l ::: b ': rest) = l ::: a ': rest
   ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
@@ -174,18 +168,6 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (Sort (UnNest (l ::: (t :! l)) :++ (t :\ l))) tables
 
--- | Lens for getting a column out of a tuple
-col ::
-  forall (label :: Symbol) (m :: [Mapping Symbol Type]) (n :: [Mapping Symbol Type]) (t :: Type) (t' :: Type).
-  ( IsMember label t m
-  , t ~ (m :! label)
-  , Updatable label t' m n
-  , ChangeType label t' m ~ n
-  ) =>
-  Var label ->
-  Lens (Tuple m) (Tuple n) t t'
-col var = lens (lookp var) (`update` var)
-
 data Database (tables :: [Mapping Symbol Type]) where
   EmptyDB :: Database '[]
   CreateTable ::
@@ -256,11 +238,3 @@ materializeDB (Insert name (MkTable :: Table heading k v) t rest) =
 
 str :: forall k. KnownSymbol k => Var k -> String
 str Var = symbolVal (Proxy @k)
-
-project ::
-  forall (labels :: [Symbol]) heading heading' tables.
-  (Submap heading' heading, heading' ~ (heading :!! labels)) =>
-  Proxy labels ->
-  Query heading tables ->
-  Query heading' tables
-project Proxy = Project @heading'

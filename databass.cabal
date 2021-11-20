@@ -30,6 +30,7 @@ library
     DBMain
     QueryLanguage
     QueryLanguage.Fancy
+    QueryLanguage.Fancy.API
     QueryLanguage.Fancy.Examples
 
   build-depends:
