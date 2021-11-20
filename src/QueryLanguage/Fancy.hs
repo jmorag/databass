@@ -247,6 +247,8 @@ runQuery q mem = case q of
   Rename Var Var q' -> unsafeCoerce $ runQuery q' mem
   Restrict pred q' -> filter pred (runQuery q' mem)
   Project q' -> map submap (runQuery q' mem)
+  -- TODO: This is the most naive possible nested loop O(n*m) join algorithm
+  -- See https://en.wikipedia.org/wiki/Category:Join_algorithms for more ideas
   Join q1 q2 -> do
     l :: Tuple t_l <- runQuery q1 mem
     r :: Tuple t_r <- runQuery q2 mem
