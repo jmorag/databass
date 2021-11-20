@@ -16,14 +16,12 @@ import GHC.TypeLits
 import Relude hiding (Identity, Map, get, put, undefined)
 import Type.Reflection
 import Unsafe.Coerce (unsafeCoerce)
+import qualified Prelude as P
 
 (|>) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
 (|>) = Ext (Var @k)
 
 infixr 5 |>
-
-instance IsLabel k (v -> Map m -> Map ((k ':-> v) : m)) where
-  fromLabel = Ext (Var @k)
 
 type Tuple = Map
 
@@ -176,18 +174,6 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (Sort (UnNest (l ::: (t :! l)) :++ (t :\ l))) tables
 
-instance (Typeable heading) => Show (Query heading tables) where
-  show _ = "\nTODO Show contents" & go (typeRep @heading)
-    where
-      go :: TypeRep a -> ShowS
-      go (Con nil) | tyConName nil == "'[]" = ("|" <>)
-      go (App (App _ (App (App _ label) ty)) rest) =
-        ("| " <>) . shows label . (" " <>) . go ty . (" " <>) . go rest
-      go (App (Con relation) nested)
-        | tyConName relation == "Query" =
-          ("(" <>) . go nested . (")" <>)
-      go other = shows other
-
 -- | Lens for getting a column out of a tuple
 col ::
   forall (label :: Symbol) (m :: [Mapping Symbol Type]) (n :: [Mapping Symbol Type]) (t :: Type) (t' :: Type).
@@ -199,9 +185,6 @@ col ::
   Var label ->
   Lens (Tuple m) (Tuple n) t t'
 col var = lens (lookp var) (`update` var)
-
--- asMap' :: forall (l :: [Symbol]) (s :: [Mapping Symbol Type]). _
--- asMap' = asMap
 
 data Database (tables :: [Mapping Symbol Type]) where
   EmptyDB :: Database '[]
