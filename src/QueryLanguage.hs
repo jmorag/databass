@@ -40,13 +40,12 @@ type Tuple = Map Name DBVal
 data Table = MkTable {heading :: Map Name DBType, key :: [Name]}
   deriving (Show, Eq, Generic)
 
-data Database
-  = EmptyDB
-  | CreateTable Name Table Database
-  | DeleteTable Name Database
-  | Insert Name Tuple Database
-  | Delete Name (Tuple -> Bool) Database
-  deriving (Show, Eq, Generic)
+data DBStatement
+  = CreateTable Name Table
+  | DeleteTable Name
+  | Insert Name Tuple
+  | Delete Name (Tuple -> Bool)
+  deriving (Generic)
 
 data Query
   = TableIdentity Name
@@ -67,7 +66,7 @@ data Query
 -- Outer map is tables, inner maps are from serialized keys to serialized values
 type MemDB = Map Name (Map LByteString LByteString)
 
-materializeDB :: Database -> Maybe MemDB
+materializeDB :: [DBStatement] -> Maybe MemDB
 materializeDB = P.error "not yet implemented"
 
 runQuery :: Query -> MemDB -> Maybe [Tuple]
