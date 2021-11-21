@@ -221,20 +221,20 @@ runQuery q mem = case q of
     guard (l_common == r_common)
     pure (append l_common (append l_rest r_rest))
   Extend var f q -> runQuery q mem & map \tuple -> Ext var (f tuple) tuple
-  Summarize var projection fold q ->
+  Summarize var projection folder q ->
     let proj = runQuery projection mem
         tuples = runQuery q mem
-     in mkGroups proj tuples & map \(p, group) -> Ext var (L.fold fold group) p
+     in go proj tuples
     where
-      mkGroups [] _ = []
-      mkGroups (p : ps) tuples =
+      go [] _ = []
+      go (p : ps) tuples =
         let (these, rest) = partition (\tuple -> p == submap tuple) tuples
-         in (p, these) : mkGroups ps rest
+         in Ext var (L.fold folder these) p : go ps rest
   Group var _ q ->
     runQuery q mem & map \tuple ->
       let (grouped, rest) = split tuple
        in Ext var grouped rest
-  Ungroup (var :: Var label) (_ :: Proxy nested) (_ :: Proxy rest) q ->
+  Ungroup var (_ :: Proxy nested) (_ :: Proxy rest) q ->
     runQuery q mem & map \tuple ->
       let nested = lookp @_ @(Tuple nested) var tuple
           rest = submap @rest tuple
