@@ -81,26 +81,36 @@ project = Project @heading'
   Query (common :++ (t'_rest :++ t_rest)) tables
 (><) = Join
 
+extend ::
+    forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
+    (Member l t ~ 'False) =>
+    (Tuple t -> a) ->
+    Query t tables ->
+    Query (l ::: a ': t) tables
+extend = Extend Var
+
 summarize ::
   forall l a t t' tables.
   (Submap t' t, Member l t' ~ 'False) =>
   Query t' tables ->
   L.Fold (Tuple t') a ->
   Query t tables ->
-  Query (Sort (l ::: a ': t')) tables
+  Query (l ::: a ': t') tables
 summarize = Summarize (Var @l)
 
 group ::
-  forall name (attrs :: [Symbol]) t t' tables.
+  forall name (attrs :: [Symbol]) t t' tables grouped rest.
+  (grouped ~ (t :!! attrs), rest ~ (t :\\ attrs), Split grouped rest t) =>
   Query t tables ->
-  Query (Sort (name ::: Query (t :!! attrs) tables ': (t :\\ attrs))) tables
+  Query (name ::: Tuple grouped ': rest) tables
 group = Group (Var @name) (Proxy @attrs)
 
 ungroup ::
-  forall l t tables.
+  forall l t tables nested rest.
+  (Tuple nested ~ (t :! l), IsMember l (Tuple nested) t, rest ~ (t :\ l), Submap rest t) =>
   Query t tables ->
-  Query (Sort (UnNest (l ::: (t :! l)) :++ (t :\ l))) tables
-ungroup = Ungroup (Var @l)
+  Query (nested :++ rest) tables
+ungroup = Ungroup (Var @l) (Proxy @nested) Proxy
 
 (<|) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
 (<|) = Ext (Var @k)

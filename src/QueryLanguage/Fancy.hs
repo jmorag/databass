@@ -101,11 +101,6 @@ type family (m :: [Mapping Symbol Type]) :!! (cs :: [Symbol]) :: [Mapping Symbol
   m :!! (label ': ls) = (label ::: (m :! label)) ': (m :!! ls)
   m :!! '[] = '[]
 
-type family UnNest t where
-  UnNest (l ::: Query ts tables) = ts
-  UnNest (l ::: t) = TypeError ( 'ShowType (l ::: t) ':<>: 'Text " is not relation valued")
-  UnNest x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
-
 type family Intersection t t' where
   Intersection t t' = Intersection' (Sort t) (Sort t')
 
@@ -147,7 +142,7 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Var l ->
     (Tuple t -> a) ->
     Query t tables ->
-    Query (Sort (l ::: a ': t)) tables
+    Query (l ::: a ': t) tables
   Summarize ::
     forall l a t t' tables.
     (Submap t' t, Member l t' ~ 'False) =>
@@ -155,18 +150,22 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t' tables ->
     L.Fold (Tuple t') a ->
     Query t tables ->
-    Query (Sort (l ::: a ': t')) tables
+    Query (l ::: a ': t') tables
   Group ::
-    forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]) tables.
+    forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]) grouped rest tables.
+    (grouped ~ (t :!! attrs), rest ~ (t :\\ attrs), Split grouped rest t) =>
     Var l ->
     Proxy attrs ->
     Query t tables ->
-    Query (Sort (l ::: Query (t :!! attrs) tables ': (t :\\ attrs))) tables
+    Query (l ::: Tuple grouped ': rest) tables
   Ungroup ::
-    forall l t tables.
+    forall l t tables nested rest.
+    (IsMember l (Tuple nested) t, rest ~ (t :\ l), Submap rest t) =>
     Var l ->
+    Proxy nested ->
+    Proxy rest ->
     Query t tables ->
-    Query (Sort (UnNest (l ::: (t :! l)) :++ (t :\ l))) tables
+    Query (nested :++ rest) tables
 
 data Database (tables :: [Mapping Symbol Type]) where
   EmptyDB :: Database '[]
@@ -220,7 +219,17 @@ runQuery q mem = case q of
         r_rest = submap @(t_r :\\ GetLabels (Intersection t_l t_r)) r
     guard (l_common == r_common)
     pure (append l_common (append l_rest r_rest))
-  _ -> []
+  Extend var f q -> runQuery q mem & map \tuple -> Ext var (f tuple) tuple
+  Summarize var q' fold q -> P.error "TODO"
+  Group var _ q ->
+    runQuery q mem & map \tuple ->
+      let (grouped, rest) = split tuple
+       in Ext var grouped rest
+  Ungroup (var :: Var label) (_ :: Proxy nested) (_ :: Proxy rest) q ->
+      runQuery q mem & map \tuple ->
+        let nested = lookp @_ @(Tuple nested) var tuple
+            rest = submap @rest tuple
+         in append nested rest
 
 materializeDB :: forall tables. Database tables -> MemDB tables
 materializeDB EmptyDB = MemDB mempty

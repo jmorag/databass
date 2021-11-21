@@ -70,7 +70,7 @@ sp = table @"suppliers-parts" @Tables
 fancyQuery :: Query _ Tables
 fancyQuery = s & project @'["CITY", "STATUS"] & Restrict (\t -> t ^. col @"STATUS" < 30)
 
-extendEx = s & Extend (Var @"TRIPLE") (\t -> t ^. col @"STATUS" * 3)
+extendEx = s & extend @"TRIPLE" (\t -> t ^. col @"STATUS" * 3)
 
 summarizeEx = sp & summarize @"P_COUNT" (project @'["S#"] s) L.length
 
