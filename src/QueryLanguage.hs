@@ -59,6 +59,8 @@ data Query
   | Join Query Query
   | Extend Name (Tuple -> DBVal) Query
   | Summarize Name Query (L.Fold Tuple DBVal) Query
+  -- You might need to extend DBVal and DBType to include nested tuples to
+  -- represent these
   | Group Name [Name] Query
   | UnGroup Name Query
   deriving (Generic)
