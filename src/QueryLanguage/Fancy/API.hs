@@ -91,9 +91,9 @@ extend = Extend Var
 
 summarize ::
   forall l a t t' tables.
-  (Submap t' t, Member l t' ~ 'False) =>
+  (Submap t' t, Member l t' ~ 'False, Eq (Tuple t')) =>
   Query t' tables ->
-  L.Fold (Tuple t') a ->
+  L.Fold (Tuple t) a ->
   Query t tables ->
   Query (l ::: a ': t') tables
 summarize = Summarize (Var @l)

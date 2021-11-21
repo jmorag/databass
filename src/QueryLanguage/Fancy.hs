@@ -8,6 +8,7 @@ import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as BL
+import Data.List (partition)
 import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
@@ -145,10 +146,10 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query (l ::: a ': t) tables
   Summarize ::
     forall l a t t' tables.
-    (Submap t' t, Member l t' ~ 'False) =>
+    (Submap t' t, Member l t' ~ 'False, Eq (Tuple t')) =>
     Var l ->
     Query t' tables ->
-    L.Fold (Tuple t') a ->
+    L.Fold (Tuple t) a ->
     Query t tables ->
     Query (l ::: a ': t') tables
   Group ::
@@ -220,16 +221,24 @@ runQuery q mem = case q of
     guard (l_common == r_common)
     pure (append l_common (append l_rest r_rest))
   Extend var f q -> runQuery q mem & map \tuple -> Ext var (f tuple) tuple
-  Summarize var q' fold q -> P.error "TODO"
+  Summarize var projection fold q ->
+    let proj = runQuery projection mem
+        tuples = runQuery q mem
+     in mkGroups proj tuples & map \(p, group) -> Ext var (L.fold fold group) p
+    where
+      mkGroups [] _ = []
+      mkGroups (p : ps) tuples =
+        let (these, rest) = partition (\tuple -> p == submap tuple) tuples
+         in (p, these) : mkGroups ps rest
   Group var _ q ->
     runQuery q mem & map \tuple ->
       let (grouped, rest) = split tuple
        in Ext var grouped rest
   Ungroup (var :: Var label) (_ :: Proxy nested) (_ :: Proxy rest) q ->
-      runQuery q mem & map \tuple ->
-        let nested = lookp @_ @(Tuple nested) var tuple
-            rest = submap @rest tuple
-         in append nested rest
+    runQuery q mem & map \tuple ->
+      let nested = lookp @_ @(Tuple nested) var tuple
+          rest = submap @rest tuple
+       in append nested rest
 
 materializeDB :: forall tables. Database tables -> MemDB tables
 materializeDB EmptyDB = MemDB mempty
