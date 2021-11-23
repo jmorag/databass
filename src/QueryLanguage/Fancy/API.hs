@@ -133,3 +133,10 @@ col ::
   ) =>
   Lens (Tuple m) (Tuple n) t t'
 col = lens (lookp (Var @label)) (`update` (Var @label))
+
+{- TODO: investigate a quasiquoter for creating tuples
+[row_auto_incr S# start 1|SNAME STATUS CITY
+     1  Smith 20     London
+     2  Jones Blake
+|]
+-}
