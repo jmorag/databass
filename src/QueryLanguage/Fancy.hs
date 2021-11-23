@@ -80,12 +80,6 @@ type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [
   Rename a b ((a ::: t) ': rest) = (b ::: t) ': rest
   Rename a b (c ': rest) = c ': Rename a b rest
 
--- | Update the type at label l
-type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
-  ChangeType l a (l ::: b ': rest) = l ::: a ': rest
-  ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
-  ChangeType l a '[] = '[]
-
 -- | Delete multiple elements from a map by key O(n^2)
 type family (m :: [Mapping Symbol Type]) :\\ (cs :: [Symbol]) :: [Mapping Symbol Type] where
   m :\\ (label ': ls) = (m :\ label) :\\ ls

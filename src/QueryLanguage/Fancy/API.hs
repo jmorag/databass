@@ -117,6 +117,12 @@ ungroup = Ungroup (Var @l) (Proxy @nested) Proxy
 
 infixr 5 <|
 
+-- | Update the type at label l
+type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
+  ChangeType l a (l ::: b ': rest) = l ::: a ': rest
+  ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
+  ChangeType l a '[] = '[]
+
 -- | Lens for getting a column out of a tuple
 col ::
   forall (label :: Symbol) (m :: [Mapping Symbol Type]) (n :: [Mapping Symbol Type]) (t :: Type) (t' :: Type).
