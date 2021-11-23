@@ -1,5 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
-
 -- | Embedding of relational model as per chapter 2 of third manifesto
 module QueryLanguage.Fancy where
 

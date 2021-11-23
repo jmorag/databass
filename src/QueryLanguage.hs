@@ -65,8 +65,8 @@ data Query
   | UnGroup Name Query
   deriving (Generic)
 
--- Outer map is tables, inner maps are from serialized keys to serialized values
-type MemDB = Map Name (Map LByteString LByteString)
+-- Outer map is tables, inner maps are from table keys to the rest of the row
+type MemDB = Map Name (Map Tuple Tuple)
 
 materializeDB :: [DBStatement] -> Maybe MemDB
 materializeDB = P.error "not yet implemented"
