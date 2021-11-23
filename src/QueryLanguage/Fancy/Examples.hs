@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 -- | Example uses of fancy query language
 module QueryLanguage.Fancy.Examples where
 
@@ -99,6 +100,7 @@ spTup1, spTup2 :: Tuple (AsMap SPHeading)
 spTup1 = asMap @SPHeading $ 1 <| 1 <| 300 <| Empty
 spTup2 = asMap @SPHeading $ 1 <| 2 <| 200 <| Empty
 
+db :: DBStatement _ Ord Unconstrained
 db =
   EmptyDB
     & createTable @Suppliers

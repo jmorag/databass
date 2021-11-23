@@ -22,43 +22,44 @@ import qualified Prelude as P
  > createTable @UserTable
 -}
 createTable ::
-  forall namedTable name heading k v tables.
+  forall namedTable name heading k v tables k_c v_c.
   ( Member name tables ~ 'False
   , IsHeading heading k v
-  , Ord (Tuple k)
   , namedTable ~ (name ::: Table heading k v)
   ) =>
-  DBStatement tables ->
-  DBStatement (name ::: Table heading k v ': tables)
+  DBStatement tables k_c v_c ->
+  DBStatement (name ::: Table heading k v ': tables) k_c v_c
 createTable = CreateTable
 
 insert ::
-  forall name tables heading k v.
+  forall name tables heading k v k_c v_c.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
   , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
   , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
   , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
-  , Ord (Tuple k)
+  , k_c (Tuple k)
+  , v_c (Tuple v)
   ) =>
   Tuple heading ->
-  DBStatement tables ->
-  DBStatement tables
+  DBStatement tables k_c v_c ->
+  DBStatement tables k_c v_c
 insert tuple = TableStatement (Var @name) (Insert tuple :: TableOp heading k v)
 
 insertMany ::
-  forall name tables heading k v t.
+  forall name tables heading k v t k_c v_c.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
   , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
   , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
   , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
-  , Ord (Tuple k)
   , Foldable t
+  , k_c (Tuple k)
+  , v_c (Tuple v)
   ) =>
   t (Tuple heading) ->
-  DBStatement tables ->
-  DBStatement tables
+  DBStatement tables k_c v_c ->
+  DBStatement tables k_c v_c
 insertMany tuples db = foldr (insert @name) db tuples
 
 table ::
@@ -154,9 +155,6 @@ col = lens (lookp (Var @label)) (`update` (Var @label))
 |]
 -}
 
-runQueryDB :: Query t tables -> DBStatement tables -> [Tuple t]
-runQueryDB q = runQuery q . materializeDB
-
 -- for the repl
-testQuery :: Show (Tuple t) => DBStatement tables -> Query t tables -> IO ()
-testQuery db q = runQueryDB q db & mapM_ Relude.print
+testQuery :: Show (Tuple t) => DBStatement tables Ord v_c -> Query t tables -> IO ()
+testQuery db q = runQuery q (materializeMemDB db) & mapM_ Relude.print

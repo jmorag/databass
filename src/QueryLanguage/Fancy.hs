@@ -27,6 +27,7 @@ instance Binary (Tuple '[]) where
   put Empty = pure ()
   get = pure Empty
 
+-- TODO, compactify serialization format. 64 bits for length is usually too much
 instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
   put (Ext _ x xs) = do
     let bytes = runPut $ put x
@@ -160,30 +161,43 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (nested :++ rest) tables
 
-data DBStatement (tables :: [Mapping Symbol Type]) where
-  EmptyDB :: DBStatement '[]
+{- | Heterogeneous list of database statements. 'k_c' and 'v_c' signify
+ constraints needed to materialize table contents in bits. For example, the
+ MemDB representation using 'M.Map' from containers with the primary key of
+ the table as the map key needs '(k_c ~ Ord)' and can leave v_c unspecified.
+ To serialize the database to a b-tree on disk, you would need
+ '(k_c ~ Binary, v_c ~ Binary)'.
+-}
+data
+  DBStatement
+    (tables :: [Mapping Symbol Type])
+    (k_c :: Type -> Constraint)
+    (v_c :: Type -> Constraint)
+  where
+  EmptyDB :: DBStatement '[] k_c v_c
   CreateTable ::
-    (Member name tables ~ 'False, IsHeading heading k v, Ord (Tuple k)) =>
-    DBStatement tables ->
-    DBStatement ((name ::: Table heading k v) ': tables)
+    (Member name tables ~ 'False, IsHeading heading k v) =>
+    DBStatement tables k_c v_c ->
+    DBStatement ((name ::: Table heading k v) ': tables) k_c v_c
   DeleteTable ::
-    forall (name :: Symbol) tables remaining.
+    forall (name :: Symbol) tables remaining k_c v_c.
     (Member name tables ~ 'True, (tables :\ name) ~ remaining, Submap (MemDB' remaining) (MemDB' tables)) =>
     Var name ->
     Proxy remaining ->
-    DBStatement tables ->
-    DBStatement remaining
+    DBStatement tables k_c v_c ->
+    DBStatement remaining k_c v_c
   TableStatement ::
     ( IsHeading heading k v
     , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
     , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
     , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
-    , Ord (Tuple k)
+    , k_c (Tuple k)
+    , v_c (Tuple v)
     ) =>
     Var name ->
     TableOp heading k v ->
-    DBStatement tables ->
-    DBStatement tables
+    DBStatement tables k_c v_c ->
+    DBStatement tables k_c v_c
 
 type family MemDB tables where
   MemDB tables = Tuple (MemDB' tables)
@@ -230,11 +244,14 @@ runQuery q mem = case q of
           rest = submap @rest tuple
        in append nested rest
 
-materializeDB :: forall tables. DBStatement tables -> MemDB tables
-materializeDB EmptyDB = Empty
-materializeDB (CreateTable rest) = Ext Var M.empty (materializeDB rest)
-materializeDB (DeleteTable _ (_ :: Proxy remaining) rest) = submap @(MemDB' remaining) (materializeDB rest)
-materializeDB (TableStatement name s rest) = over (colLens' name) (tableUpdate s) (materializeDB rest)
+class Unconstrained a
+instance Unconstrained a
+
+materializeMemDB :: forall tables v_c. DBStatement tables Ord v_c -> MemDB tables
+materializeMemDB EmptyDB = Empty
+materializeMemDB (CreateTable rest) = Ext Var M.empty (materializeMemDB rest)
+materializeMemDB (DeleteTable _ (_ :: Proxy remaining) rest) = submap @(MemDB' remaining) (materializeMemDB rest)
+materializeMemDB (TableStatement name (s :: TableOp heading k v) rest) = over (colLens' name) (tableUpdateMem s) (materializeMemDB rest)
 
 -- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
@@ -249,11 +266,11 @@ colLens' ::
   Lens' (Tuple m) t
 colLens' var = lens (lookp var) (`update` var)
 
-tableUpdate ::
+tableUpdateMem ::
   (IsHeading heading k v, Ord (Tuple k)) =>
   TableOp heading k v ->
   M.Map (Tuple k) (Tuple v) ->
   M.Map (Tuple k) (Tuple v)
-tableUpdate (Insert tuple) =
+tableUpdateMem (Insert tuple) =
   let (key, val) = split tuple in M.insert key val
-tableUpdate (DeleteByKey key) = M.delete key
+tableUpdateMem (DeleteByKey key) = M.delete key
