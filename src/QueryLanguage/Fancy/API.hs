@@ -35,9 +35,9 @@ insert ::
   forall name tables heading k v k_c v_c.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
-  , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
-  , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
-  , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
+  , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
   , k_c (Tuple k)
   , v_c (Tuple v)
   ) =>
@@ -50,9 +50,9 @@ insertMany ::
   forall name tables heading k v t k_c v_c.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
-  , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
-  , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
-  , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
+  , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
   , Foldable t
   , k_c (Tuple k)
   , v_c (Tuple v)
@@ -66,7 +66,7 @@ table ::
   forall name tables heading k v.
   ( (tables :! name) ~ Table heading k v
   , IsMember name (Table heading k v) tables
-  , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
   , IsHeading heading k v
   ) =>
   Query heading tables
@@ -157,4 +157,4 @@ col = lens (lookp (Var @label)) (`update` (Var @label))
 
 -- for the repl
 testQuery :: Show (Tuple t) => DBStatement tables Ord v_c -> Query t tables -> IO ()
-testQuery db q = runQuery q (materializeMemDB db) & mapM_ Relude.print
+testQuery db q = runQuery q (materializeMapDB db) & mapM_ Relude.print

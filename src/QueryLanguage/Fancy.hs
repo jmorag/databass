@@ -106,7 +106,7 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   Identity ::
     ( (tables :! name) ~ Table heading k v
     , IsMember name (Table heading k v) tables
-    , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
+    , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
     ) =>
     Var name ->
     Table heading k v ->
@@ -163,7 +163,7 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
 
 {- | Heterogeneous list of database statements. 'k_c' and 'v_c' signify
  constraints needed to materialize table contents in bits. For example, the
- MemDB representation using 'M.Map' from containers with the primary key of
+ MapDB representation using 'M.Map' from containers with the primary key of
  the table as the map key needs '(k_c ~ Ord)' and can leave v_c unspecified.
  To serialize the database to a b-tree on disk, you would need
  '(k_c ~ Binary, v_c ~ Binary)'.
@@ -181,16 +181,16 @@ data
     DBStatement ((name ::: Table heading k v) ': tables) k_c v_c
   DeleteTable ::
     forall (name :: Symbol) tables remaining k_c v_c.
-    (Member name tables ~ 'True, (tables :\ name) ~ remaining, Submap (MemDB' remaining) (MemDB' tables)) =>
+    (Member name tables ~ 'True, (tables :\ name) ~ remaining, Submap (MapDB' remaining) (MapDB' tables)) =>
     Var name ->
     Proxy remaining ->
     DBStatement tables k_c v_c ->
     DBStatement remaining k_c v_c
   TableStatement ::
     ( IsHeading heading k v
-    , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
-    , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
-    , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
+    , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+    , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+    , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
     , k_c (Tuple k)
     , v_c (Tuple v)
     ) =>
@@ -199,14 +199,14 @@ data
     DBStatement tables k_c v_c ->
     DBStatement tables k_c v_c
 
-type family MemDB tables where
-  MemDB tables = Tuple (MemDB' tables)
+type family MapDB tables where
+  MapDB tables = Tuple (MapDB' tables)
 
-type family MemDB' tables where
-  MemDB' '[] = '[]
-  MemDB' (name ::: Table heading k v ': rest) = (name ::: M.Map (Tuple k) (Tuple v)) ': MemDB' rest
+type family MapDB' tables where
+  MapDB' '[] = '[]
+  MapDB' (name ::: Table heading k v ': rest) = (name ::: M.Map (Tuple k) (Tuple v)) ': MapDB' rest
 
-runQuery :: forall tables t. Query t tables -> MemDB tables -> [Tuple t]
+runQuery :: forall tables t. Query t tables -> MapDB tables -> [Tuple t]
 runQuery q mem = case q of
   Identity name (MkTable :: Table heading k v) ->
     M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
@@ -247,11 +247,11 @@ runQuery q mem = case q of
 class Unconstrained a
 instance Unconstrained a
 
-materializeMemDB :: forall tables v_c. DBStatement tables Ord v_c -> MemDB tables
-materializeMemDB EmptyDB = Empty
-materializeMemDB (CreateTable rest) = Ext Var M.empty (materializeMemDB rest)
-materializeMemDB (DeleteTable _ (_ :: Proxy remaining) rest) = submap @(MemDB' remaining) (materializeMemDB rest)
-materializeMemDB (TableStatement name (s :: TableOp heading k v) rest) = over (colLens' name) (tableUpdateMem s) (materializeMemDB rest)
+materializeMapDB :: forall tables v_c. DBStatement tables Ord v_c -> MapDB tables
+materializeMapDB EmptyDB = Empty
+materializeMapDB (CreateTable rest) = Ext Var M.empty (materializeMapDB rest)
+materializeMapDB (DeleteTable _ (_ :: Proxy remaining) rest) = submap @(MapDB' remaining) (materializeMapDB rest)
+materializeMapDB (TableStatement name (s :: TableOp heading k v) rest) = over (colLens' name) (tableUpdateMap s) (materializeMapDB rest)
 
 -- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
@@ -266,11 +266,11 @@ colLens' ::
   Lens' (Tuple m) t
 colLens' var = lens (lookp var) (`update` var)
 
-tableUpdateMem ::
+tableUpdateMap ::
   (IsHeading heading k v, Ord (Tuple k)) =>
   TableOp heading k v ->
   M.Map (Tuple k) (Tuple v) ->
   M.Map (Tuple k) (Tuple v)
-tableUpdateMem (Insert tuple) =
+tableUpdateMap (Insert tuple) =
   let (key, val) = split tuple in M.insert key val
-tableUpdateMem (DeleteByKey key) = M.delete key
+tableUpdateMap (DeleteByKey key) = M.delete key
