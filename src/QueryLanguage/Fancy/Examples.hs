@@ -2,7 +2,7 @@
 module QueryLanguage.Fancy.Examples where
 
 import qualified Control.Foldl as L
-import Control.Lens hiding (Empty, Identity, (<|), (<|))
+import Control.Lens hiding (Empty, Identity, (<|))
 import Data.Binary
 import Data.Type.Map
 import Data.Type.Set (Sort)
@@ -10,6 +10,7 @@ import GHC.TypeLits
 import QueryLanguage.Fancy
 import QueryLanguage.Fancy.API
 import Relude hiding (Identity, group)
+import qualified Prelude as P
 
 -- The running example
 -- ╔═════════════════════════════════════════════════════════════════╗
@@ -56,7 +57,9 @@ type SPHeading = '["S#" ::: Int, "P#" ::: Int, "QTY" ::: Int]
 
 type SP = "suppliers-parts" ::: T SPHeading '["S#", "P#"]
 
-type Tables = AsMap '[Suppliers, Parts, SP]
+-- TODO: The ordering has to agree with the createTable calls. We should
+-- normalize instead
+type Tables = '[SP, Parts, Suppliers]
 
 s :: Query _ Tables
 s = table @"suppliers"
@@ -141,5 +144,3 @@ db =
       )
 
 -- & DeleteTable (Var @"suppliers")
-
-memDB = materializeDB db

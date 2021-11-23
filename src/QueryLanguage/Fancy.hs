@@ -2,6 +2,7 @@
 module QueryLanguage.Fancy where
 
 import qualified Control.Foldl as L
+import Control.Lens (Lens', lens, over)
 import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
@@ -59,19 +60,11 @@ type IsHeading heading k v =
   , Split k v heading
   , Unionable k v
   , Union k v ~ heading
-  , Binary (Tuple heading)
-  , Binary (Tuple k)
-  , Binary (Tuple v)
   )
 
-data Table heading k v where
-  MkTable :: forall (heading :: [Mapping Symbol Type]) k v. (IsHeading heading k v) => Table heading k v
+data Table heading k v = (IsHeading heading k v) => MkTable
 
-type family IsKey (labels :: [Symbol]) (t :: [Mapping Symbol Type]) :: Constraint where
-  IsKey (label ': ls) (label ::: a ': rest) = IsKey ls rest
-  IsKey (label ': ls) (a ': rest) = IsKey (label ': ls) rest
-  IsKey '[] tuple = ()
-  IsKey labels '[] = TypeError ( 'Text "Could not find " ':<>: 'ShowType labels)
+data TableOp heading k v = Insert (Tuple heading) | DeleteByKey (Tuple k)
 
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
   Rename a b '[] = '[]
@@ -109,7 +102,14 @@ type family Intersection'Case (ordering :: Ordering) l r a as b bs where
   Intersection'Case 'EQ l r a as b bs = TypeError ( 'Text "Unreachable, oh god please")
 
 data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
-  Identity :: ((tables :! name) ~ Table heading k v, KnownSymbol name) => Var name -> Table heading k v -> Query heading tables
+  Identity ::
+    ( (tables :! name) ~ Table heading k v
+    , IsMember name (Table heading k v) tables
+    , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
+    ) =>
+    Var name ->
+    Table heading k v ->
+    Query heading tables
   Rename :: forall a b t tables. Var a -> Var b -> Query t tables -> Query (Rename a b t) tables
   Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
   Project :: (Submap t' t) => Query t tables -> Query t' tables
@@ -160,44 +160,42 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (nested :++ rest) tables
 
-data Database (tables :: [Mapping Symbol Type]) where
-  EmptyDB :: Database '[]
+data DBStatement (tables :: [Mapping Symbol Type]) where
+  EmptyDB :: DBStatement '[]
   CreateTable ::
-    (Member name tables ~ 'False, KnownSymbol name) =>
-    Var name ->
-    Table heading k v ->
-    Database tables ->
-    Database ((name ::: Table heading k v) ': tables)
+    (Member name tables ~ 'False, IsHeading heading k v, Ord (Tuple k)) =>
+    DBStatement tables ->
+    DBStatement ((name ::: Table heading k v) ': tables)
   DeleteTable ::
     forall (name :: Symbol) tables remaining.
-    (KnownSymbol name, Member name tables ~ 'True, (tables :\ name) ~ remaining) =>
+    (Member name tables ~ 'True, (tables :\ name) ~ remaining, Submap (MemDB' remaining) (MemDB' tables)) =>
     Var name ->
-    Database tables ->
-    Database remaining
-  Insert ::
-    ((tables :! name) ~ Table heading k v, KnownSymbol name) =>
+    Proxy remaining ->
+    DBStatement tables ->
+    DBStatement remaining
+  TableStatement ::
+    ( IsHeading heading k v
+    , (MemDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+    , IsMember name (M.Map (Tuple k) (Tuple v)) (MemDB' tables)
+    , Updatable name (M.Map (Tuple k) (Tuple v)) (MemDB' tables) (MemDB' tables)
+    , Ord (Tuple k)
+    ) =>
     Var name ->
-    Table heading k v ->
-    Tuple heading ->
-    Database tables ->
-    Database tables
+    TableOp heading k v ->
+    DBStatement tables ->
+    DBStatement tables
 
-type family TableHeading table :: [Mapping Symbol Type] where
-  TableHeading (Table heading k v) = heading
-  TableHeading a = TypeError ( 'Text "Can only call 'TableHeading' on Table, not " ':$$: 'ShowType a)
+type family MemDB tables where
+  MemDB tables = Tuple (MemDB' tables)
 
-newtype MemDB tables = MemDB {getMemDB :: M.Map String (M.Map LByteString LByteString)}
-  deriving (Show)
+type family MemDB' tables where
+  MemDB' '[] = '[]
+  MemDB' (name ::: Table heading k v ': rest) = (name ::: M.Map (Tuple k) (Tuple v)) ': MemDB' rest
 
-runQuery ::
-  forall t tables tables'.
-  (Sort tables ~ Sort tables') =>
-  Query t tables ->
-  MemDB tables' ->
-  [Tuple t]
+runQuery :: forall tables t. Query t tables -> MemDB tables -> [Tuple t]
 runQuery q mem = case q of
   Identity name (MkTable :: Table heading k v) ->
-    M.toList (getMemDB mem M.! str name) & map \(k, v) -> (decode k :: Tuple k) `union` (decode v :: Tuple v)
+    M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
   Rename Var Var q' -> unsafeCoerce $ runQuery q' mem
   Restrict pred q' -> filter pred (runQuery q' mem)
   Project q' -> map submap (runQuery q' mem)
@@ -232,19 +230,30 @@ runQuery q mem = case q of
           rest = submap @rest tuple
        in append nested rest
 
-materializeDB :: forall tables. Database tables -> MemDB tables
-materializeDB EmptyDB = MemDB mempty
-materializeDB (CreateTable name MkTable rest) =
-  MemDB $
-    M.insert (str name) mempty (getMemDB (materializeDB rest))
-materializeDB (DeleteTable name rest) = MemDB $ M.delete (str name) (getMemDB $ materializeDB rest)
-materializeDB (Insert name (MkTable :: Table heading k v) t rest) =
-  MemDB $
-    M.update (Just . M.insert (encode key) (encode val)) (str name) (getMemDB $ materializeDB rest)
-  where
-    kv :: (Split k v heading) => (Tuple k, Tuple v)
-    kv = split t
-    (key, val) = kv
+materializeDB :: forall tables. DBStatement tables -> MemDB tables
+materializeDB EmptyDB = Empty
+materializeDB (CreateTable rest) = Ext Var M.empty (materializeDB rest)
+materializeDB (DeleteTable _ (_ :: Proxy remaining) rest) = submap @(MemDB' remaining) (materializeDB rest)
+materializeDB (TableStatement name s rest) = over (colLens' name) (tableUpdate s) (materializeDB rest)
 
-str :: forall k. KnownSymbol k => Var k -> String
-str Var = symbolVal (Proxy @k)
+-- | Update the type at label l
+type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
+  ChangeType l a (l ::: b ': rest) = l ::: a ': rest
+  ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
+  ChangeType l a '[] = '[]
+
+colLens' ::
+  forall (label :: Symbol) m t.
+  (IsMember label t m, t ~ (m :! label), Updatable label t m m) =>
+  Var label ->
+  Lens' (Tuple m) t
+colLens' var = lens (lookp var) (`update` var)
+
+tableUpdate ::
+  (IsHeading heading k v, Ord (Tuple k)) =>
+  TableOp heading k v ->
+  M.Map (Tuple k) (Tuple v) ->
+  M.Map (Tuple k) (Tuple v)
+tableUpdate (Insert tuple) =
+  let (key, val) = split tuple in M.insert key val
+tableUpdate (DeleteByKey key) = M.delete key
