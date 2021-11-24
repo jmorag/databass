@@ -7,51 +7,67 @@ module QueryLanguage.Fancy.API where
 
 import qualified Control.Foldl as L
 import Control.Lens (Lens, Lens', lens)
+import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
 import QueryLanguage.Fancy
 import Relude hiding (Identity, Map, get, put, undefined)
+import qualified Prelude as P
 
+{- | Intended usage is to have a named table type that you pass to 'createTable'
+ via type applications
+
+ > type UserTable = "users" ::: T '["id" ::: Int, "name" ::: String, "age" ::: Int] '["id"]
+ > createTable @UserTable
+-}
 createTable ::
-  forall table name heading k v tables.
-  ( IsHeading heading k v
-  , Member name tables ~ 'False
-  , KnownSymbol name
-  , table ~ (name ::: Table heading k v)
+  forall namedTable name heading k v tables k_c v_c.
+  ( Member name tables ~ 'False
+  , IsHeading heading k v
+  , namedTable ~ (name ::: Table heading k v)
   ) =>
-  Database tables ->
-  Database (name ::: Table heading k v ': tables)
-createTable = CreateTable (Var @name) (MkTable :: Table heading k v)
+  DBStatement tables k_c v_c ->
+  DBStatement (name ::: Table heading k v ': tables) k_c v_c
+createTable = CreateTable
 
 insert ::
-  forall name tables heading k v.
+  forall name tables heading k v k_c v_c.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
-  , KnownSymbol name
+  , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
+  , k_c (Tuple k)
+  , v_c (Tuple v)
   ) =>
-  Tuple (TableHeading (tables :! name)) ->
-  Database tables ->
-  Database tables
-insert = Insert (Var @name) MkTable
+  Tuple heading ->
+  DBStatement tables k_c v_c ->
+  DBStatement tables k_c v_c
+insert tuple = TableStatement (Var @name) (Insert tuple :: TableOp heading k v)
 
 insertMany ::
-  forall name tables heading k v t.
+  forall name tables heading k v t k_c v_c.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
-  , KnownSymbol name
+  , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
   , Foldable t
+  , k_c (Tuple k)
+  , v_c (Tuple v)
   ) =>
-  t (Tuple (TableHeading (tables :! name))) ->
-  Database tables ->
-  Database tables
+  t (Tuple heading) ->
+  DBStatement tables k_c v_c ->
+  DBStatement tables k_c v_c
 insertMany tuples db = foldr (insert @name) db tuples
 
 table ::
   forall name tables heading k v.
-  ( IsHeading heading k v
-  , Table heading k v ~ (tables :! name)
-  , KnownSymbol name
+  ( (tables :! name) ~ Table heading k v
+  , IsMember name (Table heading k v) tables
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , IsHeading heading k v
   ) =>
   Query heading tables
 table = Identity (Var @name) (MkTable :: Table heading k v)
@@ -82,11 +98,11 @@ project = Project @heading'
 (><) = Join
 
 extend ::
-    forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
-    (Member l t ~ 'False) =>
-    (Tuple t -> a) ->
-    Query t tables ->
-    Query (l ::: a ': t) tables
+  forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
+  (Member l t ~ 'False) =>
+  (Tuple t -> a) ->
+  Query t tables ->
+  Query (l ::: a ': t) tables
 extend = Extend Var
 
 summarize ::
@@ -107,7 +123,11 @@ group = Group (Var @name) (Proxy @attrs)
 
 ungroup ::
   forall l t tables nested rest.
-  (Tuple nested ~ (t :! l), IsMember l (Tuple nested) t, rest ~ (t :\ l), Submap rest t) =>
+  ( Tuple nested ~ (t :! l)
+  , IsMember l (Tuple nested) t
+  , rest ~ (t :\ l)
+  , Submap rest t
+  ) =>
   Query t tables ->
   Query (nested :++ rest) tables
 ungroup = Ungroup (Var @l) (Proxy @nested) Proxy
@@ -116,12 +136,6 @@ ungroup = Ungroup (Var @l) (Proxy @nested) Proxy
 (<|) = Ext (Var @k)
 
 infixr 5 <|
-
--- | Update the type at label l
-type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
-  ChangeType l a (l ::: b ': rest) = l ::: a ': rest
-  ChangeType l a (l' ::: b ': rest) = l' ::: b ': ChangeType l a rest
-  ChangeType l a '[] = '[]
 
 -- | Lens for getting a column out of a tuple
 col ::
@@ -140,3 +154,7 @@ col = lens (lookp (Var @label)) (`update` (Var @label))
      2  Jones Blake
 |]
 -}
+
+-- for the repl
+testQuery :: Show (Tuple t) => DBStatement tables Ord v_c -> Query t tables -> IO ()
+testQuery db q = runQuery q (materializeMapDB db) & mapM_ Relude.print
