@@ -3,6 +3,8 @@ module QueryLanguage.Fancy where
 
 import qualified Control.Foldl as L
 import Control.Lens (Lens', lens, over)
+import Data.Aeson
+import Data.Aeson.Types
 import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
@@ -38,6 +40,24 @@ instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
     size <- getInt64le
     x <- isolate (fromIntegral size) get
     Ext Var x <$> get
+
+instance ToJSON' (Tuple xs) => ToJSON (Tuple xs) where
+  toJSON = object . toJSON'
+  toEncoding = pairs . toEncoding'
+
+class ToJSON' a where
+  toJSON' :: a -> [Pair]
+  toEncoding' :: a -> Series
+
+instance ToJSON' (Tuple '[]) where
+  toJSON' Empty = []
+  toEncoding' Empty = mempty
+
+instance (KnownSymbol label, ToJSON' (Map as), ToJSON a) => ToJSON' (Map ((label ':-> a) ': as)) where
+  toJSON' (Ext _ x xs) =
+    toText (symbolVal (Proxy @label)) .= x : toJSON' xs
+  toEncoding' (Ext _ x xs) =
+    toText (symbolVal (Proxy @label)) .= x <> toEncoding' xs
 
 type family GetAttr attr where
   GetAttr (l ::: a) = a
@@ -161,13 +181,12 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (nested :++ rest) tables
 
-{- | Heterogeneous list of database statements. 'k_c' and 'v_c' signify
- constraints needed to materialize table contents in bits. For example, the
- MapDB representation using 'M.Map' from containers with the primary key of
- the table as the map key needs '(k_c ~ Ord)' and can leave v_c unspecified.
- To serialize the database to a b-tree on disk, you would need
- '(k_c ~ Binary, v_c ~ Binary)'.
--}
+-- | Heterogeneous list of database statements. 'k_c' and 'v_c' signify
+-- constraints needed to materialize table contents in bits. For example, the
+-- MapDB representation using 'M.Map' from containers with the primary key of
+-- the table as the map key needs '(k_c ~ Ord)' and can leave v_c unspecified.
+-- To serialize the database to a b-tree on disk, you would need
+-- '(k_c ~ Binary, v_c ~ Binary)'.
 data
   DBStatement
     (tables :: [Mapping Symbol Type])

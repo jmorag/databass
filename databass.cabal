@@ -1,6 +1,6 @@
-cabal-version:      2.4
-name:               databass
-version:            0.1.0.0
+cabal-version:     2.4
+name:              databass
+version:           0.1.0.0
 
 -- A short (one-line) description of the package.
 -- synopsis:
@@ -9,17 +9,14 @@ version:            0.1.0.0
 -- description:
 
 -- A URL where users can report bugs.
--- bug-reports:
+bug-reports:       https://github.com/laurenarnett/databass/issues
 
 -- The license under which the package is released.
--- license:
-author:             Lauren Arnett
-maintainer:         lba2138@columbia.edu
-
--- A copyright notice.
--- copyright:
--- category:
-extra-source-files: CHANGELOG.md
+license:           MIT
+author:            Lauren Arnett, Joseph Morag
+maintainer:        lba2138@columbia.edu, jm@josephmorag.com
+category:          Database
+source-repository: https://github.com/laurenarnett/databass
 
 library
   hs-source-dirs:     src
@@ -34,6 +31,7 @@ library
     QueryLanguage.Fancy.Examples
 
   build-depends:
+    , aeson
     , b-tree
     , base             <5
     , binary
@@ -68,11 +66,11 @@ library
     UndecidableInstances
 
 executable databass
-  main-is:        Main.hs
-  ghc-options:    -Wall
-  default-language:   Haskell2010
+  main-is:          Main.hs
+  ghc-options:      -Wall
+  default-language: Haskell2010
   build-depends:
     , base      <5
     , databass
 
-  hs-source-dirs: app
+  hs-source-dirs:   app
