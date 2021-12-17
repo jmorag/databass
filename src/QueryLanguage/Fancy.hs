@@ -55,9 +55,9 @@ instance ToJSON' (Tuple '[]) where
 
 instance (KnownSymbol label, ToJSON' (Map as), ToJSON a) => ToJSON' (Map ((label ':-> a) ': as)) where
   toJSON' (Ext _ x xs) =
-    toText (symbolVal (Proxy @label)) .= x : toJSON' xs
+    fromString (symbolVal (Proxy @label)) .= x : toJSON' xs
   toEncoding' (Ext _ x xs) =
-    toText (symbolVal (Proxy @label)) .= x <> toEncoding' xs
+    fromString (symbolVal (Proxy @label)) .= x <> toEncoding' xs
 
 type family GetAttr attr where
   GetAttr (l ::: a) = a
