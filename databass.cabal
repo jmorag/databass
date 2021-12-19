@@ -25,17 +25,15 @@ library
   --
   exposed-modules:
     Databass
-    Databass.QueryLanguage
     Databass.MapDB
+    Databass.QueryLanguage
 
   build-depends:
     , aeson
-    , b-tree
     , base             <5
     , binary
     , foldl
     , lens
-    , pipes
     , relude           ^>=1
     , type-level-sets
 
@@ -65,35 +63,14 @@ library
 
 executable manifesto
   main-is:            Manifesto.hs
-  ghc-options:        -Wall
+  ghc-options:        -O0
   default-language:   Haskell2010
   build-depends:
     , aeson
     , base             <5
     , databass
+    , foldl
     , lens
     , type-level-sets
 
   hs-source-dirs:     app
-  default-extensions:
-    BlockArguments
-    ConstraintKinds
-    DataKinds
-    DeriveFunctor
-    DeriveGeneric
-    FlexibleContexts
-    FlexibleInstances
-    GADTs
-    InstanceSigs
-    KindSignatures
-    LambdaCase
-    MultiParamTypeClasses
-    PartialTypeSignatures
-    PolyKinds
-    RankNTypes
-    ScopedTypeVariables
-    StandaloneDeriving
-    TypeApplications
-    TypeFamilies
-    TypeOperators
-    UndecidableInstances
