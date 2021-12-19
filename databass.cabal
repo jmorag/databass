@@ -29,6 +29,7 @@ library
     QueryLanguage.Fancy
     QueryLanguage.Fancy.API
     QueryLanguage.Fancy.Examples
+    QueryLanguage.Fancy.MapDB
 
   build-depends:
     , aeson

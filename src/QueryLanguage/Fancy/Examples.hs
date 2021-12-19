@@ -4,7 +4,7 @@ module QueryLanguage.Fancy.Examples where
 
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty, Identity, (<|))
-import Data.Binary
+import Data.Aeson
 import Data.Type.Map
 import Data.Type.Set (Sort)
 import GHC.TypeLits
@@ -48,7 +48,7 @@ type Suppliers = "suppliers" ::: T SHeading '["S#"]
 
 data Color = Red | Green | Blue deriving (Show, Eq, Generic)
 
-instance Binary Color
+instance ToJSON Color
 
 type PHeading = '["P#" ::: Int, "PNAME" ::: String, "COLOR" ::: Color, "WEIGHT" ::: Double, "CITY" ::: String]
 
@@ -58,8 +58,6 @@ type SPHeading = '["S#" ::: Int, "P#" ::: Int, "QTY" ::: Int]
 
 type SP = "suppliers-parts" ::: T SPHeading '["S#", "P#"]
 
--- TODO: The ordering has to agree with the createTable calls. We should
--- normalize instead
 type Tables = '[SP, Parts, Suppliers]
 
 s :: Query _ Tables
@@ -72,7 +70,7 @@ sp :: Query _ Tables
 sp = table @"suppliers-parts" @Tables
 
 fancyQuery :: Query _ Tables
-fancyQuery = s & project @'["CITY", "STATUS"] & Restrict (\t -> t ^. col @"STATUS" < 30)
+fancyQuery = s & project @'["CITY", "STATUS"] & restrict (\t -> t ^. col @"STATUS" < 30)
 
 extendEx = s & extend @"TRIPLE" (\t -> t ^. col @"STATUS" * 3)
 
@@ -100,13 +98,8 @@ spTup1, spTup2 :: Tuple (AsMap SPHeading)
 spTup1 = asMap @SPHeading $ 1 <| 1 <| 300 <| Empty
 spTup2 = asMap @SPHeading $ 1 <| 2 <| 200 <| Empty
 
-db :: DBStatement _ Ord Unconstrained
-db =
-  EmptyDB
-    & createTable @Suppliers
-    & createTable @Parts
-    & createTable @SP
-    & insertMany @"suppliers"
+db = initDB @Tables
+    & insertMany @"suppliers" @Tables
       ( map
           (asMap @SHeading)
           [ 1 <| "Smith" <| 20 <| "London" <| Empty
@@ -116,7 +109,7 @@ db =
           , 5 <| "Adams" <| 30 <| "Athens" <| Empty
           ]
       )
-    & insertMany @"parts"
+    & insertMany @"parts" @Tables
       ( map
           (asMap @PHeading)
           [ 1 <| "Nut" <| Red <| 12 <| "London" <| Empty
@@ -127,7 +120,7 @@ db =
           , 6 <| "Cog" <| Red <| 19 <| "London" <| Empty
           ]
       )
-    & insertMany @"suppliers-parts"
+    & insertMany @"suppliers-parts" @Tables
       ( map
           (asMap @SPHeading)
           [ 1 <| 1 <| 300 <| Empty
@@ -144,5 +137,3 @@ db =
           , 4 <| 5 <| 400 <| Empty
           ]
       )
-
--- & DeleteTable (Var @"suppliers")

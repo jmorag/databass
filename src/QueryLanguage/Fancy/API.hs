@@ -12,6 +12,7 @@ import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
 import QueryLanguage.Fancy
+import qualified QueryLanguage.Fancy.MapDB as MapDB
 import Relude hiding (Identity, Map, get, put, undefined)
 import qualified Prelude as P
 
@@ -22,45 +23,69 @@ import qualified Prelude as P
  > createTable @UserTable
 -}
 createTable ::
-  forall namedTable name heading k v tables k_c v_c.
-  ( Member name tables ~ 'False
-  , IsHeading heading k v
-  , namedTable ~ (name ::: Table heading k v)
-  ) =>
-  DBStatement tables k_c v_c ->
-  DBStatement (name ::: Table heading k v ': tables) k_c v_c
-createTable = CreateTable
+  forall namedTable tables name heading k v.
+  (namedTable ~ (name ::: Table heading k v), IsHeading heading k v, Ord (Tuple k), Member name tables ~ 'False) =>
+  MapDB tables ->
+  MapDB ((name ::: Table heading k v) ': tables)
+createTable = MapDB.createTable (Var @name) (Proxy @tables) (MkTable :: Table heading k v)
+
+initDB :: forall tables . (MapDB.InitDB tables) => MapDB tables
+initDB = MapDB.initDB (Proxy @tables)
 
 insert ::
-  forall name tables heading k v k_c v_c.
+  forall name tables heading k v.
   ( IsHeading heading k v
-  , Table heading k v ~ (tables :! name)
   , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
   , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
   , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
-  , k_c (Tuple k)
-  , v_c (Tuple v)
+  , Ord (Tuple k)
   ) =>
   Tuple heading ->
-  DBStatement tables k_c v_c ->
-  DBStatement tables k_c v_c
-insert tuple = TableStatement (Var @name) (Insert tuple :: TableOp heading k v)
+  MapDB tables ->
+  MapDB tables
+insert = MapDB.insert (Var @name) (Proxy @tables)
 
 insertMany ::
-  forall name tables heading k v t k_c v_c.
+  forall name tables heading k v t.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
   , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
   , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
   , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
   , Foldable t
-  , k_c (Tuple k)
-  , v_c (Tuple v)
+  , Ord (Tuple k)
   ) =>
   t (Tuple heading) ->
-  DBStatement tables k_c v_c ->
-  DBStatement tables k_c v_c
-insertMany tuples db = foldr (insert @name) db tuples
+  MapDB tables ->
+  MapDB tables
+insertMany tuples db = foldr (insert @name @tables) db tuples
+
+deleteByKey ::
+  forall name tables heading k v.
+  ( IsHeading heading k v
+  , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
+  , Ord (Tuple k)
+  ) =>
+  Tuple k ->
+  MapDB tables ->
+  MapDB tables
+deleteByKey = MapDB.deleteByKey (Var @name) (Proxy @tables)
+
+updateTable ::
+  forall name tables heading k v.
+  ( IsHeading heading k v
+  , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
+  , Ord (Tuple k)
+  ) =>
+  (Tuple heading -> Bool) ->
+  (Tuple heading -> Tuple heading) ->
+  MapDB tables ->
+  MapDB tables
+updateTable = MapDB.updateTable (Var @name) (Proxy @tables)
 
 table ::
   forall name tables heading k v.
@@ -74,6 +99,9 @@ table = Identity (Var @name) (MkTable :: Table heading k v)
 
 rename :: forall a b t tables. Query t tables -> Query (Rename a b t) tables
 rename = Rename (Var @a) (Var @b)
+
+restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
+restrict = Restrict
 
 project ::
   forall (labels :: [Symbol]) heading heading' tables.
@@ -155,6 +183,5 @@ col = lens (lookp (Var @label)) (`update` (Var @label))
 |]
 -}
 
--- for the repl
-testQuery :: Show (Tuple t) => DBStatement tables Ord v_c -> Query t tables -> IO ()
-testQuery db q = runQuery q (materializeMapDB db) & mapM_ Relude.print
+runQuery :: Query t tables -> Tuple (MapDB' tables) -> [Tuple t]
+runQuery = MapDB.runQuery

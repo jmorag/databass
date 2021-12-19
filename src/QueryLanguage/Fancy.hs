@@ -202,96 +202,12 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (nested :++ rest) tables
 
--- | Heterogeneous list of database statements. 'k_c' and 'v_c' signify
--- constraints needed to materialize table contents in bits. For example, the
--- MapDB representation using 'M.Map' from containers with the primary key of
--- the table as the map key needs '(k_c ~ Ord)' and can leave v_c unspecified.
--- To serialize the database to a b-tree on disk, you would need
--- '(k_c ~ Binary, v_c ~ Binary)'.
-data
-  DBStatement
-    (tables :: [Mapping Symbol Type])
-    (k_c :: Type -> Constraint)
-    (v_c :: Type -> Constraint)
-  where
-  EmptyDB :: DBStatement '[] k_c v_c
-  CreateTable ::
-    (Member name tables ~ 'False, IsHeading heading k v) =>
-    DBStatement tables k_c v_c ->
-    DBStatement ((name ::: Table heading k v) ': tables) k_c v_c
-  DeleteTable ::
-    forall (name :: Symbol) tables remaining k_c v_c.
-    (Member name tables ~ 'True, (tables :\ name) ~ remaining, Submap (MapDB' remaining) (MapDB' tables)) =>
-    Var name ->
-    Proxy remaining ->
-    DBStatement tables k_c v_c ->
-    DBStatement remaining k_c v_c
-  TableStatement ::
-    ( IsHeading heading k v
-    , (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
-    , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
-    , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
-    , k_c (Tuple k)
-    , v_c (Tuple v)
-    ) =>
-    Var name ->
-    TableOp heading k v ->
-    DBStatement tables k_c v_c ->
-    DBStatement tables k_c v_c
-
 type family MapDB tables where
   MapDB tables = Tuple (MapDB' tables)
 
 type family MapDB' tables where
   MapDB' '[] = '[]
   MapDB' (name ::: Table heading k v ': rest) = (name ::: M.Map (Tuple k) (Tuple v)) ': MapDB' rest
-
-runQuery :: forall tables t. Query t tables -> MapDB tables -> [Tuple t]
-runQuery q mem = case q of
-  Identity name (MkTable :: Table heading k v) ->
-    M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
-  Rename Var Var q' -> unsafeCoerce $ runQuery q' mem
-  Restrict pred q' -> filter pred (runQuery q' mem)
-  Project q' -> map submap (runQuery q' mem)
-  -- TODO: This is the most naive possible nested loop O(n*m) join algorithm
-  -- See https://en.wikipedia.org/wiki/Category:Join_algorithms for more ideas
-  Join q1 q2 -> do
-    l :: Tuple t_l <- runQuery q1 mem
-    r :: Tuple t_r <- runQuery q2 mem
-    let l_common = submap @(Intersection t_l t_r) l
-        r_common = submap @(Intersection t_l t_r) r
-        l_rest = submap @(t_l :\\ GetLabels (Intersection t_l t_r)) l
-        r_rest = submap @(t_r :\\ GetLabels (Intersection t_l t_r)) r
-    guard (l_common == r_common)
-    pure (append l_common (append l_rest r_rest))
-  Extend var f q -> runQuery q mem & map \tuple -> Ext var (f tuple) tuple
-  Summarize var projection folder q ->
-    let proj = runQuery projection mem
-        tuples = runQuery q mem
-     in go proj tuples
-    where
-      go [] _ = []
-      go (p : ps) tuples =
-        let (these, rest) = partition (\tuple -> p == submap tuple) tuples
-         in Ext var (L.fold folder these) p : go ps rest
-  Group var _ q ->
-    runQuery q mem & map \tuple ->
-      let (grouped, rest) = split tuple
-       in Ext var grouped rest
-  Ungroup var (_ :: Proxy nested) (_ :: Proxy rest) q ->
-    runQuery q mem & map \tuple ->
-      let nested = lookp @_ @(Tuple nested) var tuple
-          rest = submap @rest tuple
-       in append nested rest
-
-class Unconstrained a
-instance Unconstrained a
-
-materializeMapDB :: forall tables v_c. DBStatement tables Ord v_c -> MapDB tables
-materializeMapDB EmptyDB = Empty
-materializeMapDB (CreateTable rest) = Ext Var M.empty (materializeMapDB rest)
-materializeMapDB (DeleteTable _ (_ :: Proxy remaining) rest) = submap @(MapDB' remaining) (materializeMapDB rest)
-materializeMapDB (TableStatement name (s :: TableOp heading k v) rest) = over (colLens' name) (tableUpdateMap s) (materializeMapDB rest)
 
 -- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where
@@ -305,12 +221,3 @@ colLens' ::
   Var label ->
   Lens' (Tuple m) t
 colLens' var = lens (lookp var) (`update` var)
-
-tableUpdateMap ::
-  (IsHeading heading k v, Ord (Tuple k)) =>
-  TableOp heading k v ->
-  M.Map (Tuple k) (Tuple v) ->
-  M.Map (Tuple k) (Tuple v)
-tableUpdateMap (Insert tuple) =
-  let (key, val) = split tuple in M.insert key val
-tableUpdateMap (DeleteByKey key) = M.delete key
