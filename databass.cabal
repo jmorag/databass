@@ -1,6 +1,6 @@
-cabal-version:     2.4
-name:              databass
-version:           0.1.0.0
+cabal-version: 2.4
+name:          databass
+version:       0.1.0.0
 
 -- A short (one-line) description of the package.
 -- synopsis:
@@ -9,14 +9,14 @@ version:           0.1.0.0
 -- description:
 
 -- A URL where users can report bugs.
-bug-reports:       https://github.com/laurenarnett/databass/issues
+bug-reports:   https://github.com/laurenarnett/databass/issues
 
 -- The license under which the package is released.
-license:           MIT
-author:            Lauren Arnett, Joseph Morag
-maintainer:        lba2138@columbia.edu, jm@josephmorag.com
-category:          Database
-source-repository: https://github.com/laurenarnett/databass
+license:       MIT
+author:        Lauren Arnett, Joseph Morag
+maintainer:    lba2138@columbia.edu, jm@josephmorag.com
+category:      Database
+homepage:      https://github.com/laurenarnett/databass
 
 library
   hs-source-dirs:     src
@@ -24,12 +24,9 @@ library
   -- cabal-fmt: expand src
   --
   exposed-modules:
-    DBMain
-    QueryLanguage
-    QueryLanguage.Fancy
-    QueryLanguage.Fancy.API
-    QueryLanguage.Fancy.Examples
-    QueryLanguage.Fancy.MapDB
+    Databass
+    Databass.QueryLanguage
+    Databass.MapDB
 
   build-depends:
     , aeson
@@ -39,7 +36,7 @@ library
     , foldl
     , lens
     , pipes
-    , relude
+    , relude           ^>=1
     , type-level-sets
 
   default-language:   Haskell2010
@@ -66,12 +63,37 @@ library
     TypeOperators
     UndecidableInstances
 
-executable databass
-  main-is:          Main.hs
-  ghc-options:      -Wall
-  default-language: Haskell2010
+executable manifesto
+  main-is:            Manifesto.hs
+  ghc-options:        -Wall
+  default-language:   Haskell2010
   build-depends:
-    , base      <5
+    , aeson
+    , base             <5
     , databass
+    , lens
+    , type-level-sets
 
-  hs-source-dirs:   app
+  hs-source-dirs:     app
+  default-extensions:
+    BlockArguments
+    ConstraintKinds
+    DataKinds
+    DeriveFunctor
+    DeriveGeneric
+    FlexibleContexts
+    FlexibleInstances
+    GADTs
+    InstanceSigs
+    KindSignatures
+    LambdaCase
+    MultiParamTypeClasses
+    PartialTypeSignatures
+    PolyKinds
+    RankNTypes
+    ScopedTypeVariables
+    StandaloneDeriving
+    TypeApplications
+    TypeFamilies
+    TypeOperators
+    UndecidableInstances

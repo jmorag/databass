@@ -1,7 +1,5 @@
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
--- | Example uses of fancy query language
-module QueryLanguage.Fancy.Examples where
-
+-- | Chapter 2 of "The Third Manifesto"
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty, Identity, (<|))
 import Data.Aeson

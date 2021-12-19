@@ -1,11 +1,11 @@
-module QueryLanguage.Fancy.MapDB where
+module Databass.MapDB where
 
 import qualified Control.Foldl as L
 import Control.Lens hiding (Identity, Empty)
 import Data.List (partition)
 import qualified Data.Map.Strict as M
 import Data.Type.Map
-import QueryLanguage.Fancy
+import Databass.QueryLanguage
 import Relude hiding (Identity, Map, get, put, undefined)
 import Unsafe.Coerce (unsafeCoerce)
 

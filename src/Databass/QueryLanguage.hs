@@ -1,22 +1,38 @@
 -- | Embedding of relational model as per chapter 2 of third manifesto
-module QueryLanguage.Fancy where
+module Databass.QueryLanguage (
+  Tuple,
+  (:::),
+  GetLabels,
+  T,
+  IsHeading,
+  Table (..),
+  TableOp (..),
+  Rename,
+  (:\\),
+  (:\),
+  (:!),
+  (:!!),
+  Intersection,
+  Query(..),
+  MapDB,
+  MapDB',
+  ChangeType,
+  colLens'
+) where
 
 import qualified Control.Foldl as L
-import Control.Lens (Lens', lens, over)
+import Control.Lens (Lens', lens)
 import Data.Aeson
-import Data.Aeson.Types
+import Data.Aeson.Types (Pair, Parser)
 import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as BL
-import Data.List (partition)
 import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
-import Relude hiding (Identity, Map, get, put, undefined)
-import Unsafe.Coerce (unsafeCoerce)
-import qualified Prelude as P
+import Relude hiding (Identity, Map, get, put)
 
 type Tuple = Map
 

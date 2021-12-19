@@ -3,7 +3,7 @@
 {- | Nicer type-application based API for databass operations
  placed in a separate module to segregate code using AllowAmbiguousTypes
 -}
-module QueryLanguage.Fancy.API where
+module Databass where
 
 import qualified Control.Foldl as L
 import Control.Lens (Lens, Lens', lens)
@@ -11,8 +11,8 @@ import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
-import QueryLanguage.Fancy
-import qualified QueryLanguage.Fancy.MapDB as MapDB
+import Databass.QueryLanguage
+import qualified Databass.MapDB as MapDB
 import Relude hiding (Identity, Map, get, put, undefined)
 import qualified Prelude as P
 
