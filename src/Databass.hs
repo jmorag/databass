@@ -1,27 +1,46 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
-{- | Nicer type-application based API for databass operations
- placed in a separate module to segregate code using AllowAmbiguousTypes
--}
-module Databass where
+-- | Nicer type-application based API for databass operations
+-- placed in a separate module to segregate code using AllowAmbiguousTypes
+module Databass (
+  module Databass.QueryLanguage,
+  createTable,
+  initDB,
+  insert,
+  insertMany,
+  deleteByKey,
+  updateTable,
+  table,
+  rename,
+  restrict,
+  project,
+  join,
+  (><),
+  extend,
+  group,
+  ungroup,
+  summarize,
+  (<|),
+  col,
+  runQuery,
+) where
 
 import qualified Control.Foldl as L
 import Control.Lens (Lens, Lens', lens)
 import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
-import GHC.TypeLits
-import Databass.QueryLanguage
 import qualified Databass.MapDB as MapDB
-import Relude hiding (Identity, Map, get, put, undefined)
+import Databass.QueryLanguage
+import GHC.TypeLits
+import Relude hiding (Identity, Map, get, join, put, undefined, group)
 import qualified Prelude as P
 
-{- | Intended usage is to have a named table type that you pass to 'createTable'
- via type applications
-
- > type UserTable = "users" ::: T '["id" ::: Int, "name" ::: String, "age" ::: Int] '["id"]
- > createTable @UserTable
--}
+-- | Intended usage is to have a named table type that you pass to 'createTable'
+-- via type applications
+--
+-- > type UserTable = "users" ::: T '["id" ::: Int, "name" ::: String, "age" ::: Int] '["id"]
+-- > createTable @UserTable
 createTable ::
   forall namedTable tables name heading k v.
   (namedTable ~ (name ::: Table heading k v), IsHeading heading k v, Ord (Tuple k), Member name tables ~ 'False) =>
@@ -29,7 +48,7 @@ createTable ::
   MapDB ((name ::: Table heading k v) ': tables)
 createTable = MapDB.createTable (Var @name) (Proxy @tables) (MkTable :: Table heading k v)
 
-initDB :: forall tables . (MapDB.InitDB tables) => MapDB tables
+initDB :: forall tables. (MapDB.InitDB tables) => MapDB tables
 initDB = MapDB.initDB (Proxy @tables)
 
 insert ::
@@ -110,19 +129,21 @@ project ::
   Query heading' tables
 project = Project @heading'
 
-(><) ::
-  ( Eq (Tuple (Intersection t' t))
-  , common ~ Intersection t' t
-  , Submap common t'
-  , Submap common t
-  , Submap t'_rest t'
-  , Submap t_rest t
-  , t'_rest ~ (t' :\\ GetLabels common)
-  , t_rest ~ (t :\\ GetLabels common)
-  ) =>
-  Query t' tables ->
-  Query t tables ->
-  Query (common :++ (t'_rest :++ t_rest)) tables
+join
+  , (><) ::
+    ( Eq (Tuple (Intersection t' t))
+    , common ~ Intersection t' t
+    , Submap common t'
+    , Submap common t
+    , Submap t'_rest t'
+    , Submap t_rest t
+    , t'_rest ~ (t' :\\ GetLabels common)
+    , t_rest ~ (t :\\ GetLabels common)
+    ) =>
+    Query t' tables ->
+    Query t tables ->
+    Query (common :++ (t'_rest :++ t_rest)) tables
+join = Join
 (><) = Join
 
 extend ::
@@ -183,5 +204,5 @@ col = lens (lookp (Var @label)) (`update` (Var @label))
 |]
 -}
 
-runQuery :: Query t tables -> Tuple (MapDB' tables) -> [Tuple t]
-runQuery = MapDB.runQuery
+runQuery :: MapDB tables -> Query t tables -> [Tuple t]
+runQuery = flip MapDB.runQuery

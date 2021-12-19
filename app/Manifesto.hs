@@ -1,15 +1,18 @@
 {-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
--- | Chapter 2 of "The Third Manifesto"
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty, Identity, (<|))
 import Data.Aeson
 import Data.Type.Map
-import Data.Type.Set (Sort)
-import GHC.TypeLits
-import QueryLanguage.Fancy
-import QueryLanguage.Fancy.API
-import Relude hiding (Identity, group)
-import qualified Prelude as P
+import Databass
+import GHC.Generics
 
 -- The running example
 -- ╔═════════════════════════════════════════════════════════════════╗
@@ -96,7 +99,8 @@ spTup1, spTup2 :: Tuple (AsMap SPHeading)
 spTup1 = asMap @SPHeading $ 1 <| 1 <| 300 <| Empty
 spTup2 = asMap @SPHeading $ 1 <| 2 <| 200 <| Empty
 
-db = initDB @Tables
+db =
+  initDB @Tables
     & insertMany @"suppliers" @Tables
       ( map
           (asMap @SHeading)
@@ -135,3 +139,15 @@ db = initDB @Tables
           , 4 <| 5 <| 400 <| Empty
           ]
       )
+
+main :: IO ()
+main = do
+  let testQuery desc q = putStrLn desc >> (runQuery db q & mapM_ print)
+  testQuery "S" s
+  testQuery "P" p
+  testQuery "EXTEND s ADD (3 * STATUS as TRIPLE)" extendEx
+  testQuery "S { S# }" projectEx
+  testQuery "SP GROUP ({ P#, QTY } AS PQ)" groupEx
+  testQuery "SPQ UNGROUP (PQ)" ungroupEx
+  testQuery "S RENAME (S# AS id)" renameEx
+  testQuery "S JOIN P" joinEx
