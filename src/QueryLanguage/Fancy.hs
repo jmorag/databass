@@ -41,41 +41,44 @@ instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
     x <- isolate (fromIntegral size) get
     Ext Var x <$> get
 
-class ToJSON' a where
-  toJSON' :: a -> [Pair]
-  toEncoding' :: a -> Series
+class ToJSON' (a :: [Mapping Symbol Type]) where
+  toJSON' :: Tuple a -> [Pair]
+  toEncoding' :: Tuple a -> Series
 
-instance ToJSON' (Tuple '[]) where
+instance ToJSON' '[] where
   toJSON' Empty = []
   toEncoding' Empty = mempty
 
-instance (KnownSymbol label, ToJSON' (Map as), ToJSON a) => ToJSON' (Tuple (label ::: a ': as)) where
+instance
+  (KnownSymbol label, ToJSON' as, ToJSON a) =>
+  ToJSON' (label ::: a ': as)
+  where
   toJSON' (Ext _ x xs) =
     fromString (symbolVal (Proxy @label)) .= x : toJSON' xs
   toEncoding' (Ext _ x xs) =
     fromString (symbolVal (Proxy @label)) .= x <> toEncoding' xs
 
-instance ToJSON' (Tuple xs) => ToJSON (Tuple xs) where
+instance ToJSON' xs => ToJSON (Tuple xs) where
   toJSON = object . toJSON'
   toEncoding = pairs . toEncoding'
 
-class ObjectToTuple xs where
-  parseObject :: Proxy xs -> Object -> Parser (Tuple xs)
+class FromJSON' (xs :: [Mapping Symbol Type]) where
+  parseObject :: Object -> Parser (Tuple xs)
 
-instance ObjectToTuple '[] where
-  parseObject _ o = pure Empty
+instance FromJSON' '[] where
+  parseObject o = pure Empty
 
 instance
-  (FromJSON x, KnownSymbol label, ObjectToTuple xs) =>
-  ObjectToTuple (label ::: x ': xs)
+  (FromJSON x, KnownSymbol label, FromJSON' xs) =>
+  FromJSON' (label ::: x ': xs)
   where
-  parseObject _ o =
+  parseObject o =
     Ext (Var @label)
       <$> (o .: fromString (symbolVal (Proxy @label)))
-      <*> parseObject (Proxy @xs) o
+      <*> parseObject o
 
-instance ObjectToTuple xs => FromJSON (Tuple xs) where
-  parseJSON = withObject "Tuple" (parseObject (Proxy @xs))
+instance FromJSON' xs => FromJSON (Tuple xs) where
+  parseJSON = withObject "Tuple" parseObject
 
 type family GetAttr attr where
   GetAttr (l ::: a) = a
