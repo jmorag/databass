@@ -41,10 +41,6 @@ instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
     x <- isolate (fromIntegral size) get
     Ext Var x <$> get
 
-instance ToJSON' (Tuple xs) => ToJSON (Tuple xs) where
-  toJSON = object . toJSON'
-  toEncoding = pairs . toEncoding'
-
 class ToJSON' a where
   toJSON' :: a -> [Pair]
   toEncoding' :: a -> Series
@@ -53,11 +49,33 @@ instance ToJSON' (Tuple '[]) where
   toJSON' Empty = []
   toEncoding' Empty = mempty
 
-instance (KnownSymbol label, ToJSON' (Map as), ToJSON a) => ToJSON' (Map ((label ':-> a) ': as)) where
+instance (KnownSymbol label, ToJSON' (Map as), ToJSON a) => ToJSON' (Tuple (label ::: a ': as)) where
   toJSON' (Ext _ x xs) =
     fromString (symbolVal (Proxy @label)) .= x : toJSON' xs
   toEncoding' (Ext _ x xs) =
     fromString (symbolVal (Proxy @label)) .= x <> toEncoding' xs
+
+instance ToJSON' (Tuple xs) => ToJSON (Tuple xs) where
+  toJSON = object . toJSON'
+  toEncoding = pairs . toEncoding'
+
+class ObjectToTuple xs where
+  parseObject :: Proxy xs -> Object -> Parser (Tuple xs)
+
+instance ObjectToTuple '[] where
+  parseObject _ o = pure Empty
+
+instance
+  (FromJSON x, KnownSymbol label, ObjectToTuple xs) =>
+  ObjectToTuple (label ::: x ': xs)
+  where
+  parseObject _ o =
+    Ext (Var @label)
+      <$> (o .: fromString (symbolVal (Proxy @label)))
+      <*> parseObject (Proxy @xs) o
+
+instance ObjectToTuple xs => FromJSON (Tuple xs) where
+  parseJSON = withObject "Tuple" (parseObject (Proxy @xs))
 
 type family GetAttr attr where
   GetAttr (l ::: a) = a
