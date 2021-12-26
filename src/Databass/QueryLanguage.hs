@@ -6,7 +6,6 @@ module Databass.QueryLanguage (
   T,
   IsHeading,
   Table (..),
-  TableOp (..),
   Rename,
   (:\\),
   (:\),
@@ -122,8 +121,6 @@ type IsHeading heading k v =
 
 data Table heading k v = (IsHeading heading k v) => MkTable
 
-data TableOp heading k v = Insert (Tuple heading) | DeleteByKey (Tuple k)
-
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
   Rename a b '[] = '[]
   Rename a b ((a ::: t) ': rest) = (b ::: t) ': rest
@@ -172,8 +169,8 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
   Project :: (Submap t' t) => Query t tables -> Query t' tables
   Join ::
-    ( Eq (Tuple (Intersection t' t))
-    , common ~ Intersection t' t
+    ( common ~ Intersection t' t
+    , Eq (Tuple common)
     , Submap common t'
     , Submap common t
     , Submap t'_rest t'
