@@ -26,14 +26,14 @@ module Databass (
 ) where
 
 import qualified Control.Foldl as L
-import Control.Lens (Lens, Lens', lens)
+import Control.Lens (Lens, Lens', lens, LensLike)
 import qualified Data.Map.Strict as M
 import Data.Type.Map
 import Data.Type.Set (AsSet, Sort, type (:++))
 import qualified Databass.MapDB as MapDB
 import Databass.QueryLanguage
 import GHC.TypeLits
-import Relude hiding (Identity, Map, get, join, put, undefined, group)
+import Relude hiding (Identity, Map, get, group, join, put)
 import qualified Prelude as P
 
 -- | Intended usage is to have a named table type that you pass to 'createTable'
@@ -206,3 +206,14 @@ col = lens (lookp (Var @label)) (`update` (Var @label))
 
 runQuery :: MapDB tables -> Query t tables -> [Tuple t]
 runQuery = flip MapDB.runQuery
+
+instance
+  ( Functor f
+  , IsMember label t m
+  , t ~ (m :! label)
+  , Updatable label t' m n
+  , ChangeType label t' m ~ n
+  ) =>
+  IsLabel label (LensLike f (Tuple m) (Tuple n) t t')
+  where
+  fromLabel = lens (lookp (Var @label)) (`update` (Var @label))

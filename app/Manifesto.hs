@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -6,6 +5,7 @@
 {-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
+{-# OPTIONS_GHC -fno-warn-partial-type-signatures #-}
 
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty, Identity, (<|))
@@ -43,7 +43,12 @@ import GHC.Generics
 -- VAR P REAL RELATION  { P# P#, PNAME NAME, COLOR COLOR, WEIGHT WEIGHT, CITY CHAR } KEY { P# } ;
 -- VAR SP REAL RELATION { S# S#, P# P#, QTY QTY } KEY { S#, P# } ;
 
-type SHeading = '["S#" ::: Int, "SNAME" ::: String, "STATUS" ::: Int, "CITY" ::: String]
+type SHeading =
+  '[ "S#" ::: Int
+   , "SNAME" ::: String
+   , "STATUS" ::: Int
+   , "CITY" ::: String
+   ]
 
 type Suppliers = "suppliers" ::: T SHeading '["S#"]
 
@@ -51,11 +56,21 @@ data Color = Red | Green | Blue deriving (Show, Eq, Generic)
 
 instance ToJSON Color
 
-type PHeading = '["P#" ::: Int, "PNAME" ::: String, "COLOR" ::: Color, "WEIGHT" ::: Double, "CITY" ::: String]
+type PHeading =
+  '[ "P#" ::: Int
+   , "PNAME" ::: String
+   , "COLOR" ::: Color
+   , "WEIGHT" ::: Double
+   , "CITY" ::: String
+   ]
 
 type Parts = "parts" ::: T PHeading '["P#"]
 
-type SPHeading = '["S#" ::: Int, "P#" ::: Int, "QTY" ::: Int]
+type SPHeading =
+  '[ "S#" ::: Int
+   , "P#" ::: Int
+   , "QTY" ::: Int
+   ]
 
 type SP = "suppliers-parts" ::: T SPHeading '["S#", "P#"]
 
