@@ -28,7 +28,7 @@ module Databass (
 import qualified Control.Foldl as L
 import Control.Lens (Lens, Lens', lens, LensLike)
 import qualified Data.Map.Strict as M
-import Data.Type.Map
+import Data.Type.Map hiding ((:\))
 import Data.Type.Set (AsSet, Sort, type (:++))
 import qualified Databass.MapDB as MapDB
 import Databass.QueryLanguage
@@ -116,7 +116,7 @@ table ::
   Query heading tables
 table = Identity (Var @name) (MkTable :: Table heading k v)
 
-rename :: forall a b t tables. Query t tables -> Query (Rename a b t) tables
+rename :: forall a b t tables. (Sortable (Rename' a b t)) => Query t tables -> Query (Rename a b t) tables
 rename = Rename (Var @a) (Var @b)
 
 restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables

@@ -4,16 +4,15 @@ import qualified Control.Foldl as L
 import Control.Lens hiding (Identity, Empty)
 import Data.List (partition)
 import qualified Data.Map.Strict as M
-import Data.Type.Map
+import Data.Type.Map hiding ((:\))
 import Databass.QueryLanguage
 import Relude hiding (Identity, Map, get, put, undefined)
-import Unsafe.Coerce (unsafeCoerce)
 
 runQuery :: forall tables t. Query t tables -> MapDB tables -> [Tuple t]
 runQuery q mem = case q of
   Identity name (MkTable :: Table heading k v) ->
     M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
-  Rename Var Var q' -> unsafeCoerce $ runQuery q' mem
+  Rename v1 v2 q' -> map (renameTuple v1 v2) $ runQuery q' mem
   Restrict pred q' -> filter pred (runQuery q' mem)
   Project q' -> map submap (runQuery q' mem)
   -- TODO: This is the most naive possible nested loop O(n*m) join algorithm

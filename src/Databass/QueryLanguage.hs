@@ -7,16 +7,18 @@ module Databass.QueryLanguage (
   IsHeading,
   Table (..),
   Rename,
+  Rename',
+  renameTuple,
   (:\\),
   (:\),
   (:!),
   (:!!),
   Intersection,
-  Query(..),
+  Query (..),
   MapDB,
   MapDB',
   ChangeType,
-  colLens'
+  colLens',
 ) where
 
 import qualified Control.Foldl as L
@@ -28,10 +30,11 @@ import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
-import Data.Type.Map
+import Data.Type.Map hiding ((:\))
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
 import Relude hiding (Identity, Map, get, put)
+import Unsafe.Coerce (unsafeCoerce)
 
 type Tuple = Map
 
@@ -109,7 +112,12 @@ type family GetLabels attrs where
   GetLabels x = TypeError ( 'ShowType x ':$$: 'Text " is not an attribute")
 
 type family T heading (key :: [Symbol]) where
-  T heading key = Table (AsMap heading) (AsMap heading :!! AsSet key) (AsMap heading :\\ AsSet key)
+  T heading key = T' heading (AsMap heading) key (AsSet key)
+
+type family T' heading heading' key key' where
+  T' heading heading key key = Table heading (heading :!! key) (heading :\\ key)
+  T' heading heading' key key = TypeError ( 'ShowType heading ':$$: 'Text " is not normalized")
+  T' heading heading key key' = TypeError ( 'ShowType key ':$$: 'Text " is not normalized")
 
 type IsHeading heading k v =
   ( Submap k heading
@@ -117,14 +125,42 @@ type IsHeading heading k v =
   , Split k v heading
   , Unionable k v
   , Union k v ~ heading
+  , IsMap heading
+  , IsMap k
+  , IsMap v
   )
 
 data Table heading k v = (IsHeading heading k v) => MkTable
 
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
-  Rename a b '[] = '[]
-  Rename a b ((a ::: t) ': rest) = (b ::: t) ': rest
-  Rename a b (c ': rest) = c ': Rename a b rest
+  Rename a b xs = Sort (Rename' a b xs)
+
+type family Rename' (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
+  Rename' a b '[] = '[]
+  Rename' a b ((a ::: t) ': rest) = (b ::: t) ': Rename' a b rest
+  Rename' a b ((b ::: t) ': rest) =
+    TypeError
+      ( 'Text "Cannot rename "
+          ':<>: 'Text a
+          ':<>: 'Text " to "
+          ':<>: 'Text b ':$$: 'Text "The name already exists in the tuple"
+      )
+  Rename' a b (c ': rest) = c ': Rename' a b rest
+
+renameTuple ::
+  forall a b t.
+  (Sortable (Rename' a b t)) =>
+  Var a ->
+  Var b ->
+  Tuple t ->
+  Tuple (Rename a b t)
+renameTuple _ _ t = let t' :: Tuple (Rename' a b t) = unsafeCoerce t in quicksort t'
+
+-- | Type level key removal
+type family (m :: [Mapping Symbol Type]) :\ (c :: Symbol) :: [Mapping Symbol Type] where
+  (label ::: a ': rest) :\ label = rest
+  (attr ': rest) :\ label = attr ': (rest :\ label)
+  '[] :\ label = TypeError ( 'Text "Could not find " ':<>: 'ShowType label)
 
 -- | Delete multiple elements from a map by key O(n^2)
 type family (m :: [Mapping Symbol Type]) :\\ (cs :: [Symbol]) :: [Mapping Symbol Type] where
@@ -165,7 +201,13 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Var name ->
     Table heading k v ->
     Query heading tables
-  Rename :: forall a b t tables. Var a -> Var b -> Query t tables -> Query (Rename a b t) tables
+  Rename ::
+    forall a b t tables.
+    (Sortable (Rename' a b t)) =>
+    Var a ->
+    Var b ->
+    Query t tables ->
+    Query (Rename a b t) tables
   Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
   Project :: (Submap t' t) => Query t tables -> Query t' tables
   Join ::

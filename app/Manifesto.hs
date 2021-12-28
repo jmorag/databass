@@ -50,7 +50,7 @@ type SHeading =
    , "CITY" ::: String
    ]
 
-type Suppliers = "suppliers" ::: T SHeading '["S#"]
+type Suppliers = "suppliers" ::: T (AsMap SHeading) '["S#"]
 
 data Color = Red | Green | Blue deriving (Show, Eq, Generic)
 
@@ -64,7 +64,7 @@ type PHeading =
    , "CITY" ::: String
    ]
 
-type Parts = "parts" ::: T PHeading '["P#"]
+type Parts = "parts" ::: T (AsMap PHeading) '["P#"]
 
 type SPHeading =
   '[ "S#" ::: Int
@@ -72,7 +72,7 @@ type SPHeading =
    , "QTY" ::: Int
    ]
 
-type SP = "suppliers-parts" ::: T SPHeading '["S#", "P#"]
+type SP = "suppliers-parts" ::: T (AsMap SPHeading) '["P#", "S#"]
 
 type Tables = '[SP, Parts, Suppliers]
 
