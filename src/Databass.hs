@@ -116,7 +116,7 @@ table ::
   Query heading tables
 table = Identity (Var @name) (MkTable :: Table heading k v)
 
-rename :: forall a b t tables. (Sortable (Rename' a b t)) => Query t tables -> Query (Rename a b t) tables
+rename :: forall a b t tables. (Sortable (Rename a b t)) => Query t tables -> Query (Sort (Rename a b t)) tables
 rename = Rename (Var @a) (Var @b)
 
 restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
@@ -139,35 +139,36 @@ join
     , Submap t_rest t
     , t'_rest ~ (t' :\\ GetLabels common)
     , t_rest ~ (t :\\ GetLabels common)
+    , Sortable (common :++ (t'_rest :++ t_rest))
     ) =>
     Query t' tables ->
     Query t tables ->
-    Query (common :++ (t'_rest :++ t_rest)) tables
+    Query (Sort (common :++ (t'_rest :++ t_rest))) tables
 join = Join
 (><) = Join
 
 extend ::
   forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
-  (Member l t ~ 'False) =>
+  (Member l t ~ 'False, Sortable  (l ::: a ': t)) =>
   (Tuple t -> a) ->
   Query t tables ->
-  Query (l ::: a ': t) tables
-extend = Extend Var
+  Query (Sort (l ::: a ': t)) tables
+extend = Extend (Var @l)
 
 summarize ::
   forall l a t t' tables.
-  (Submap t' t, Member l t' ~ 'False, Eq (Tuple t')) =>
+  (Submap t' t, Member l t' ~ 'False, Eq (Tuple t'), Sortable (l ::: a ': t')) =>
   Query t' tables ->
   L.Fold (Tuple t) a ->
   Query t tables ->
-  Query (l ::: a ': t') tables
+  Query (Sort (l ::: a ': t')) tables
 summarize = Summarize (Var @l)
 
 group ::
   forall name (attrs :: [Symbol]) t t' tables grouped rest.
-  (grouped ~ (t :!! attrs), rest ~ (t :\\ attrs), Split grouped rest t) =>
+  (grouped ~ (t :!! attrs), rest ~ (t :\\ attrs), Split grouped rest t, Sortable (name ::: Tuple grouped ': rest)) =>
   Query t tables ->
-  Query (name ::: Tuple grouped ': rest) tables
+  Query (Sort (name ::: Tuple grouped ': rest)) tables
 group = Group (Var @name) (Proxy @attrs)
 
 ungroup ::
@@ -176,9 +177,10 @@ ungroup ::
   , IsMember l (Tuple nested) t
   , rest ~ (t :\ l)
   , Submap rest t
+  , Sortable (nested :++ rest)
   ) =>
   Query t tables ->
-  Query (nested :++ rest) tables
+  Query (Sort (nested :++ rest)) tables
 ungroup = Ungroup (Var @l) (Proxy @nested) Proxy
 
 (<|) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)

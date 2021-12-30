@@ -7,7 +7,6 @@ module Databass.QueryLanguage (
   IsHeading,
   Table (..),
   Rename,
-  Rename',
   renameTuple,
   (:\\),
   (:\),
@@ -133,28 +132,25 @@ type IsHeading heading k v =
 data Table heading k v = (IsHeading heading k v) => MkTable
 
 type family Rename (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
-  Rename a b xs = Sort (Rename' a b xs)
-
-type family Rename' (a :: Symbol) (b :: Symbol) (t :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
-  Rename' a b '[] = '[]
-  Rename' a b ((a ::: t) ': rest) = (b ::: t) ': Rename' a b rest
-  Rename' a b ((b ::: t) ': rest) =
+  Rename a b '[] = '[]
+  Rename a b ((a ::: t) ': rest) = (b ::: t) ': Rename a b rest
+  Rename a b ((b ::: t) ': rest) =
     TypeError
       ( 'Text "Cannot rename "
           ':<>: 'Text a
           ':<>: 'Text " to "
-          ':<>: 'Text b ':$$: 'Text "The name already exists in the tuple"
+          ':<>: 'Text b
+          ':$$: 'Text "The name already exists in the tuple"
       )
-  Rename' a b (c ': rest) = c ': Rename' a b rest
+  Rename a b (c ': rest) = c ': Rename a b rest
 
 renameTuple ::
   forall a b t.
-  (Sortable (Rename' a b t)) =>
   Var a ->
   Var b ->
   Tuple t ->
   Tuple (Rename a b t)
-renameTuple _ _ t = let t' :: Tuple (Rename' a b t) = unsafeCoerce t in quicksort t'
+renameTuple _ _ = unsafeCoerce
 
 -- | Type level key removal
 type family (m :: [Mapping Symbol Type]) :\ (c :: Symbol) :: [Mapping Symbol Type] where
@@ -203,11 +199,11 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query heading tables
   Rename ::
     forall a b t tables.
-    (Sortable (Rename' a b t)) =>
+    (Sortable (Rename a b t)) =>
     Var a ->
     Var b ->
     Query t tables ->
-    Query (Rename a b t) tables
+    Query (Sort (Rename a b t)) tables
   Restrict :: (Tuple t -> Bool) -> Query t tables -> Query t tables
   Project :: (Submap t' t) => Query t tables -> Query t' tables
   Join ::
@@ -219,43 +215,52 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     , Submap t_rest t
     , t'_rest ~ (t' :\\ GetLabels common)
     , t_rest ~ (t :\\ GetLabels common)
+    , Sortable (common :++ (t'_rest :++ t_rest))
     ) =>
     Query t' tables ->
     Query t tables ->
-    Query (common :++ (t'_rest :++ t_rest)) tables
+    Query (Sort (common :++ (t'_rest :++ t_rest))) tables
   -- Union :: Query t tables -> Query t tables -> Query t tables
   -- Intersection :: Query t tables -> Query t tables -> Query t tables
   -- Difference :: Query t tables -> Query t tables -> Query t tables
   Extend ::
     forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
-    (Member l t ~ 'False) =>
+    (Member l t ~ 'False, Sortable (l ::: a ': t)) =>
     Var l ->
     (Tuple t -> a) ->
     Query t tables ->
-    Query (l ::: a ': t) tables
+    Query (Sort (l ::: a ': t)) tables
   Summarize ::
     forall l a t t' tables.
-    (Submap t' t, Member l t' ~ 'False, Eq (Tuple t')) =>
+    ( Submap t' t
+    , Member l t' ~ 'False
+    , Eq (Tuple t')
+    , Sortable (l ::: a ': t')
+    ) =>
     Var l ->
     Query t' tables ->
     L.Fold (Tuple t) a ->
     Query t tables ->
-    Query (l ::: a ': t') tables
+    Query (Sort (l ::: a ': t')) tables
   Group ::
     forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]) grouped rest tables.
-    (grouped ~ (t :!! attrs), rest ~ (t :\\ attrs), Split grouped rest t) =>
+    ( grouped ~ (t :!! attrs)
+    , rest ~ (t :\\ attrs)
+    , Split grouped rest t
+    , Sortable (l ::: Tuple grouped ': rest)
+    ) =>
     Var l ->
     Proxy attrs ->
     Query t tables ->
-    Query (l ::: Tuple grouped ': rest) tables
+    Query (Sort (l ::: Tuple grouped ': rest)) tables
   Ungroup ::
     forall l t tables nested rest.
-    (IsMember l (Tuple nested) t, rest ~ (t :\ l), Submap rest t) =>
+    (IsMember l (Tuple nested) t, rest ~ (t :\ l), Submap rest t, Sortable (nested :++ rest)) =>
     Var l ->
     Proxy nested ->
     Proxy rest ->
     Query t tables ->
-    Query (nested :++ rest) tables
+    Query (Sort (nested :++ rest)) tables
 
 type family MapDB tables where
   MapDB tables = Tuple (MapDB' tables)
