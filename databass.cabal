@@ -28,6 +28,9 @@ library
     Databass.MapDB
     Databass.QueryLanguage
 
+  other-modules:
+    Databass.Blog
+
   build-depends:
     , aeson
     , base             <5
