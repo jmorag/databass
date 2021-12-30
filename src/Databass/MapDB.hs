@@ -12,7 +12,7 @@ runQuery :: forall tables t. Query t tables -> MapDB tables -> [Tuple t]
 runQuery q mem = case q of
   Identity name (MkTable :: Table heading k v) ->
     M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
-  Rename v1 v2 q' -> map (renameTuple v1 v2) $ runQuery q' mem
+  Rename v1 v2 q' -> map (quicksort . renameTuple v1 v2) $ runQuery q' mem
   Restrict pred q' -> filter pred (runQuery q' mem)
   Project q' -> map submap (runQuery q' mem)
   -- TODO: This is the most naive possible nested loop O(n*m) join algorithm
@@ -25,8 +25,8 @@ runQuery q mem = case q of
         l_rest = submap @(t_l :\\ GetLabels (Intersection t_l t_r)) l
         r_rest = submap @(t_r :\\ GetLabels (Intersection t_l t_r)) r
     guard (l_common == r_common)
-    pure (append l_common (append l_rest r_rest))
-  Extend var f q -> runQuery q mem & map \tuple -> Ext var (f tuple) tuple
+    pure (quicksort $ append l_common (append l_rest r_rest))
+  Extend var f q -> runQuery q mem & map \tuple -> quicksort (Ext var (f tuple) tuple)
   Summarize var projection folder q ->
     let proj = runQuery projection mem
         tuples = runQuery q mem
@@ -35,16 +35,16 @@ runQuery q mem = case q of
       go [] _ = []
       go (p : ps) tuples =
         let (these, rest) = partition (\tuple -> p == submap tuple) tuples
-         in Ext var (L.fold folder these) p : go ps rest
-  Group var _ q ->
-    runQuery q mem & map \tuple ->
-      let (grouped, rest) = split tuple
-       in Ext var grouped rest
+         in quicksort (Ext var (L.fold folder these) p) : go ps rest
+  Group var (_ :: Proxy attrs) q ->
+    runQuery q mem & map \(tuple :: Tuple t') ->
+      let (grouped :: Tuple (t' :!! attrs), rest :: Tuple (t' :\\ attrs)) = split tuple
+       in quicksort $ Ext var grouped rest
   Ungroup var (_ :: Proxy nested) (_ :: Proxy rest) q ->
     runQuery q mem & map \tuple ->
       let nested = lookp @_ @(Tuple nested) var tuple
           rest = submap @rest tuple
-       in append nested rest
+       in quicksort $ append nested rest
 
 createTable ::
   (IsHeading heading k v, Ord (Tuple k), Member name tables ~ 'False) =>
