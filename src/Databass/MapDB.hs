@@ -17,13 +17,11 @@ runQuery q mem = case q of
   Project q' -> map submap (runQuery q' mem)
   -- TODO: This is the most naive possible nested loop O(n*m) join algorithm
   -- See https://en.wikipedia.org/wiki/Category:Join_algorithms for more ideas
-  Join q1 q2 -> do
+  Join (_ :: Proxy t_l_rest) (_ :: Proxy t_r_rest) q1 q2 -> do
     l :: Tuple t_l <- runQuery q1 mem
     r :: Tuple t_r <- runQuery q2 mem
-    let l_common = submap @(Intersection t_l t_r) l
-        r_common = submap @(Intersection t_l t_r) r
-        l_rest = submap @(t_l :\\ GetLabels (Intersection t_l t_r)) l
-        r_rest = submap @(t_r :\\ GetLabels (Intersection t_l t_r)) r
+    let (l_common, l_rest) = split @(Intersection t_l t_r) @t_l_rest l
+        (r_common, r_rest) = split @(Intersection t_l t_r) @t_r_rest r
     guard (l_common == r_common)
     pure (quicksort $ append l_common (append l_rest r_rest))
   Extend var f q -> runQuery q mem & map \tuple -> quicksort (Ext var (f tuple) tuple)

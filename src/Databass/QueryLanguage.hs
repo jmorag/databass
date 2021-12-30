@@ -174,19 +174,29 @@ type family (m :: [Mapping Symbol Type]) :!! (cs :: [Symbol]) :: [Mapping Symbol
   m :!! (label ': ls) = (label ::: (m :! label)) ': (m :!! ls)
   m :!! '[] = '[]
 
-type family Intersection t t' where
-  Intersection t t' = Intersection' (Sort t) (Sort t')
+type family Intersection (t :: [Mapping Symbol Type]) (t' :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
+  Intersection t '[] = '[]
+  Intersection '[] t = '[]
+  Intersection (a ': as) (a ': bs) = a ': Intersection as bs
+  Intersection (l ::: a ': as) (r ::: b ': bs) =
+    IntersectionCase (CmpSymbol l r) l r a as b bs
 
-type family Intersection' (t :: [Mapping Symbol Type]) (t' :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
-  Intersection' t '[] = '[]
-  Intersection' '[] t = '[]
-  Intersection' (a ': as) (a ': bs) = a ': Intersection' as bs
-  Intersection' (l ::: a ': as) (r ::: b ': bs) = Intersection'Case (CmpSymbol l r) l r a as b bs
-
-type family Intersection'Case (ordering :: Ordering) l r a as b bs where
-  Intersection'Case 'LT l r a as b bs = Intersection' as (r ::: b ': bs)
-  Intersection'Case 'GT l r a as b bs = Intersection' (l ::: a ': as) bs
-  Intersection'Case 'EQ l r a as b bs = TypeError ( 'Text "Unreachable, oh god please")
+type family IntersectionCase (ordering :: Ordering) l r a as b bs where
+  IntersectionCase 'LT l r a as b bs = Intersection as (r ::: b ': bs)
+  IntersectionCase 'GT l r a as b bs = Intersection (l ::: a ': as) bs
+  IntersectionCase 'EQ l r a as a bs = l ::: a ': Intersection as bs
+  IntersectionCase 'EQ l r a as b bs =
+    TypeError
+      ( 'Text "Cannot join on attribute '"
+          ':<>: 'Text l
+          ':<>: 'Text "'"
+          ':$$: 'Text l
+          ':<>: 'Text "has type "
+          ':<>: 'ShowType a
+          ':<>: 'Text " in the first relation and type "
+          ':<>: 'ShowType b
+          ':<>: 'Text "in the second"
+      )
 
 data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   Identity ::
@@ -209,14 +219,12 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   Join ::
     ( common ~ Intersection t' t
     , Eq (Tuple common)
-    , Submap common t'
-    , Submap common t
-    , Submap t'_rest t'
-    , Submap t_rest t
-    , t'_rest ~ (t' :\\ GetLabels common)
-    , t_rest ~ (t :\\ GetLabels common)
+    , Split common t'_rest t'
+    , Split common t_rest t
     , Sortable (common :++ (t'_rest :++ t_rest))
     ) =>
+    Proxy t'_rest ->
+    Proxy t_rest ->
     Query t' tables ->
     Query t tables ->
     Query (Sort (common :++ (t'_rest :++ t_rest))) tables

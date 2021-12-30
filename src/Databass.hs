@@ -26,7 +26,7 @@ module Databass (
 ) where
 
 import qualified Control.Foldl as L
-import Control.Lens (Lens, Lens', lens, LensLike)
+import Control.Lens (Lens, Lens', LensLike, lens)
 import qualified Data.Map.Strict as M
 import Data.Type.Map hiding ((:\))
 import Data.Type.Set (AsSet, Sort, type (:++))
@@ -131,12 +131,11 @@ project = Project @heading'
 
 join
   , (><) ::
+    forall t' t common t'_rest t_rest tables.
     ( Eq (Tuple (Intersection t' t))
     , common ~ Intersection t' t
-    , Submap common t'
-    , Submap common t
-    , Submap t'_rest t'
-    , Submap t_rest t
+    , Split common t'_rest t'
+    , Split common t_rest t
     , t'_rest ~ (t' :\\ GetLabels common)
     , t_rest ~ (t :\\ GetLabels common)
     , Sortable (common :++ (t'_rest :++ t_rest))
@@ -144,12 +143,12 @@ join
     Query t' tables ->
     Query t tables ->
     Query (Sort (common :++ (t'_rest :++ t_rest))) tables
-join = Join
-(><) = Join
+join = Join (Proxy @t'_rest) (Proxy @t_rest)
+(><) = Join (Proxy @t'_rest) (Proxy @t_rest)
 
 extend ::
   forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
-  (Member l t ~ 'False, Sortable  (l ::: a ': t)) =>
+  (Member l t ~ 'False, Sortable (l ::: a ': t)) =>
   (Tuple t -> a) ->
   Query t tables ->
   Query (Sort (l ::: a ': t)) tables
