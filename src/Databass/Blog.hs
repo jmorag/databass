@@ -1,15 +1,15 @@
 module Databass.Blog where
 
+import Control.Monad (guard)
 import Data.Coerce (coerce)
 import Data.Kind
 import qualified Data.Map.Strict as M
+import Data.Proxy
 import Data.Type.Map
 import qualified Data.Type.Map
 import Data.Type.Set (Sort, type (:++))
 import GHC.TypeLits
 import Unsafe.Coerce (unsafeCoerce)
-import Control.Monad (guard)
-import Data.Proxy
 
 -- data Var (label :: Symbol) = Var
 
@@ -68,6 +68,12 @@ s ::
     '["S#" ::: Int]
     (AsMap '["SNAME" ::: String, "STATUS" ::: Int, "CITY" ::: String])
 s = MkRelation
+
+s' ::
+  Rel
+    (AsMap '["S#" ::: Int, "SNAME" ::: String, "STATUS" ::: Int, "CITY" ::: String])
+    '["S#"]
+s' = MkRelation
 
 type family Rel (heading :: [Mapping Symbol Type]) (key :: [Symbol]) where
   Rel heading key = Relation heading (heading :!! key) (heading :\\ key)
@@ -169,6 +175,10 @@ type family Rename (x :: Symbol) (y :: Symbol) (relation :: [Mapping Symbol Type
 
 renameTuple :: Var a -> Var b -> Tuple t -> Tuple (Rename a b t)
 renameTuple _a _b = unsafeCoerce
+
+-- This doesn't compile
+-- renameTuple' :: Var a -> Var b -> Tuple t -> Tuple (Rename a b t)
+-- renameTuple' _a _b = coerce
 
 type family Intersection (t :: [Mapping Symbol Type]) (t' :: [Mapping Symbol Type]) :: [Mapping Symbol Type] where
   Intersection t '[] = '[]
