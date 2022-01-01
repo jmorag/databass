@@ -251,19 +251,17 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t tables ->
     Query (Sort (l ::: a ': t')) tables
   Group ::
-    forall (l :: Symbol) (attrs :: [Symbol]) (t :: [Mapping Symbol Type]) grouped rest tables.
-    ( grouped ~ (t :!! attrs)
-    , rest ~ (t :\\ attrs)
-    , Split grouped rest t
-    , Sortable (l ::: Tuple grouped ': rest)
+    ( Split grouped rest t
+    , Sortable (l ::: [Tuple grouped] ': rest)
+    , Ord (Tuple rest)
     ) =>
     Var l ->
-    Proxy attrs ->
+    Proxy grouped ->
+    Proxy rest ->
     Query t tables ->
-    Query (Sort (l ::: Tuple grouped ': rest)) tables
+    Query (Sort (l ::: [Tuple grouped] ': rest)) tables
   Ungroup ::
-    forall l t tables nested rest.
-    (IsMember l (Tuple nested) t, rest ~ (t :\ l), Submap rest t, Sortable (nested :++ rest)) =>
+    (Split '[l ::: [Tuple nested]] rest t, Sortable (nested :++ rest)) =>
     Var l ->
     Proxy nested ->
     Proxy rest ->

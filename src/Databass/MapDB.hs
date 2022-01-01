@@ -1,8 +1,9 @@
 module Databass.MapDB where
 
 import qualified Control.Foldl as L
-import Control.Lens hiding (Identity, Empty)
+import Control.Lens hiding (Empty, Identity)
 import Data.List (partition)
+import Data.List.NonEmpty (groupBy)
 import qualified Data.Map.Strict as M
 import Data.Type.Map hiding ((:\))
 import Databass.QueryLanguage
@@ -34,15 +35,15 @@ runQuery q mem = case q of
       go (p : ps) tuples =
         let (these, rest) = partition (\tuple -> p == submap tuple) tuples
          in quicksort (Ext var (L.fold folder these) p) : go ps rest
-  Group var (_ :: Proxy attrs) q ->
-    runQuery q mem & map \(tuple :: Tuple t') ->
-      let (grouped :: Tuple (t' :!! attrs), rest :: Tuple (t' :\\ attrs)) = split tuple
-       in quicksort $ Ext var grouped rest
-  Ungroup var (_ :: Proxy nested) (_ :: Proxy rest) q ->
-    runQuery q mem & map \tuple ->
-      let nested = lookp @_ @(Tuple nested) var tuple
-          rest = submap @rest tuple
-       in quicksort $ append nested rest
+  Group var (_ :: Proxy grouped) (_ :: Proxy rest) q ->
+    let splits = runQuery q mem & map (split @grouped @rest) & sortWith snd
+        groups = groupBy (\(_grouped1, rest1) (_grouped2, rest2) -> rest1 == rest2) splits
+     in groups & map \((grouped, rest) :| gs) ->
+          quicksort (Ext var (grouped : fmap fst gs) rest)
+  Ungroup (_ :: Var l) (_ :: Proxy nested) (_ :: Proxy rest) q ->
+    runQuery q mem & concatMap \tuple ->
+      let (Ext _ nested Empty, rest) = split @'[l ::: [Tuple nested]] @rest tuple
+       in nested & map \group -> quicksort (append group rest)
 
 createTable ::
   (IsHeading heading k v, Ord (Tuple k), Member name tables ~ 'False) =>

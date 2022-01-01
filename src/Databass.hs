@@ -165,22 +165,26 @@ summarize = Summarize (Var @l)
 
 group ::
   forall name (attrs :: [Symbol]) t t' tables grouped rest.
-  (grouped ~ (t :!! attrs), rest ~ (t :\\ attrs), Split grouped rest t, Sortable (name ::: Tuple grouped ': rest)) =>
+  ( grouped ~ (t :!! attrs)
+  , rest ~ (t :\\ attrs)
+  , Split grouped rest t
+  , Sortable (name ::: [Tuple grouped] ': rest)
+  , Ord (Tuple rest)
+  ) =>
   Query t tables ->
-  Query (Sort (name ::: Tuple grouped ': rest)) tables
-group = Group (Var @name) (Proxy @attrs)
+  Query (Sort (name ::: [Tuple grouped] ': rest)) tables
+group = Group (Var @name) (Proxy @grouped) (Proxy @rest)
 
 ungroup ::
   forall l t tables nested rest.
-  ( Tuple nested ~ (t :! l)
-  , IsMember l (Tuple nested) t
+  ( [Tuple nested] ~ (t :! l)
   , rest ~ (t :\ l)
-  , Submap rest t
+  , Split '[l ::: [Tuple nested]] rest t
   , Sortable (nested :++ rest)
   ) =>
   Query t tables ->
   Query (Sort (nested :++ rest)) tables
-ungroup = Ungroup (Var @l) (Proxy @nested) Proxy
+ungroup = Ungroup (Var @l) (Proxy @nested) (Proxy @rest)
 
 (<|) :: forall (k :: Symbol) v m. v -> Map m -> Map ((k ':-> v) : m)
 (<|) = Ext (Var @k)
