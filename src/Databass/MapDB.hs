@@ -37,7 +37,7 @@ runQuery q mem = case q of
          in quicksort (Ext var (L.fold folder these) p) : go ps rest
   Group var (_ :: Proxy grouped) (_ :: Proxy rest) q ->
     let splits = runQuery q mem & map (split @grouped @rest) & sortWith snd
-        groups = groupBy (\(_grouped1, rest1) (_grouped2, rest2) -> rest1 == rest2) splits
+        groups = groupBy ((==) `on` snd) splits
      in groups & map \((grouped, rest) :| gs) ->
           quicksort (Ext var (grouped : fmap fst gs) rest)
   Ungroup (_ :: Var l) (_ :: Proxy nested) (_ :: Proxy rest) q ->
@@ -77,6 +77,20 @@ insert ::
   MapDB tables ->
   MapDB tables
 insert var _ tuple = let (key, val) = split tuple in over (colLens' var) (M.insert key val)
+
+updateByKey ::
+  ( (MapDB' tables :! name) ~ M.Map (Tuple k) (Tuple v)
+  , Ord (Tuple k)
+  , IsMember name (M.Map (Tuple k) (Tuple v)) (MapDB' tables)
+  , Updatable name (M.Map (Tuple k) (Tuple v)) (MapDB' tables) (MapDB' tables)
+  ) =>
+  Var name ->
+  Proxy tables ->
+  Tuple k ->
+  (Tuple v -> Tuple v) ->
+  MapDB tables ->
+  MapDB tables
+updateByKey var _ key fn db = over (colLens' var) (M.adjust fn key) db
 
 updateTable ::
   forall name heading k v tables.

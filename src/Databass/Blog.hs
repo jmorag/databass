@@ -2,8 +2,12 @@ module Databass.Blog where
 
 import Control.Monad (guard)
 import Data.Coerce (coerce)
+import Data.Function (on)
 import Data.Kind
+import Data.List (sortBy)
+import Data.List.NonEmpty (NonEmpty (..), groupBy)
 import qualified Data.Map.Strict as M
+import Data.Ord (comparing)
 import Data.Proxy
 import Data.Type.Map
 import qualified Data.Type.Map
@@ -142,6 +146,23 @@ data Query (t :: [Mapping Symbol Type]) (relations :: [Mapping Symbol Type]) whe
     Query t' tables ->
     Query t tables ->
     Query (Sort (common :++ (t'_rest :++ t_rest))) tables
+  Group ::
+    ( Split grouped rest t
+    , Sortable (l ::: [Tuple grouped] ': rest)
+    , Ord (Tuple rest)
+    ) =>
+    Var l ->
+    Proxy grouped ->
+    Proxy rest ->
+    Query t relations ->
+    Query (Sort (l ::: [Tuple grouped] ': rest)) relations
+  Ungroup ::
+    (Split '[l ::: [Tuple nested]] rest t, Sortable (nested :++ rest)) =>
+    Var l ->
+    Proxy nested ->
+    Proxy rest ->
+    Query t relations ->
+    Query (Sort (nested :++ rest)) relations
 
 runQuery :: Query t relations -> Tuple (RelationsToDB relations) -> [Tuple t]
 runQuery q db = case q of
@@ -159,6 +180,22 @@ runQuery q db = case q of
         (r_common, r_rest) = split @(Intersection t_l t_r) @t_r_rest r
     guard (l_common == r_common)
     pure (quicksort $ append l_common (append l_rest r_rest))
+  Group var (_ :: Proxy grouped) (_ :: Proxy rest) q ->
+    let splits = sortBy (comparing snd) $ map (split @grouped @rest) $ runQuery q db
+        groups = groupBy ((==) `on` snd) splits
+     in map
+          ( \((grouped, rest) :| gs) ->
+              quicksort (Ext var (grouped : fmap fst gs) rest)
+          )
+          groups
+  Ungroup (_ :: Var l) (_ :: Proxy grouped) (_ :: Proxy rest) q ->
+    concatMap
+      ( \tuple ->
+          let (Ext _ grouped Empty, rest) =
+                split @'[l ::: [Tuple grouped]] @rest tuple
+           in map (\group -> quicksort (append group rest)) grouped
+      )
+      (runQuery q db)
 
 type family Rename (x :: Symbol) (y :: Symbol) (relation :: [Mapping Symbol Type]) where
   Rename a b '[] = '[]
@@ -203,3 +240,56 @@ type family IntersectionCase (ordering :: Ordering) l r a as b bs where
           ':<>: 'ShowType b
           ':<>: 'Text "in the second"
       )
+
+-- emptyDB :: Proxy relations -> Tuple (RelationsToDB relations)
+-- emptyDB _ = Empty
+class EmptyDB (relations :: [Mapping Symbol Type]) where
+  emptyDB :: Proxy relations -> Tuple (RelationsToDB relations)
+
+instance EmptyDB '[] where
+  emptyDB _ = Empty
+
+instance
+  (EmptyDB relations, Ord (Tuple key)) =>
+  EmptyDB (name ::: (Relation heading key val) ': relations)
+  where
+  emptyDB (_ :: Proxy (name ::: relation ': relations)) =
+    Ext (Var @name) mempty (emptyDB (Proxy @relations))
+
+insert ::
+  forall relation relations name heading key val.
+  ( relations :! name ~ relation
+  , Relation heading key val ~ relation
+  , Split key val heading
+  , Ord (Tuple key)
+  , IsMember name (RelationToMap relation) (RelationsToDB relations)
+  , Updatable name (RelationToMap relation) (RelationsToDB relations) (RelationsToDB relations)
+  ) =>
+  Var name ->
+  Proxy relations ->
+  Tuple heading ->
+  Tuple (RelationsToDB relations) ->
+  Maybe (Tuple (RelationsToDB relations))
+insert var _ tuple db =
+  let old_rel = lookp var db
+      (key, val) = split @key @val tuple
+      new_rel = M.insert key val old_rel
+   in if M.member key old_rel then Nothing else Just (update db var new_rel)
+
+updateByKey ::
+  ( relations :! name ~ relation
+  , Relation heading key val ~ relation
+  , Ord (Tuple key)
+  , IsMember name (RelationToMap relation) (RelationsToDB relations)
+  , Updatable name (RelationToMap relation) (RelationsToDB relations) (RelationsToDB relations)
+  ) =>
+  Var name ->
+  Proxy relations ->
+  Tuple key ->
+  (Tuple val -> Tuple val) ->
+  Tuple (RelationsToDB relations) ->
+  Tuple (RelationsToDB relations)
+updateByKey var _ key fn db =
+  let old_rel = lookp var db
+      new_rel = M.adjust fn key old_rel
+   in update db var new_rel
