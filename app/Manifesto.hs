@@ -10,6 +10,7 @@
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty, Identity, (<|))
 import Data.Aeson
+import Data.Binary
 import Data.Type.Map
 import Databass
 import GHC.Generics
@@ -53,6 +54,8 @@ type SHeading =
 type Suppliers = "suppliers" ::: T (AsMap SHeading) '["S#"]
 
 data Color = Red | Green | Blue deriving (Show, Eq, Generic)
+
+instance Binary Color
 
 instance ToJSON Color
 
@@ -166,3 +169,6 @@ main = do
   testQuery "SPQ UNGROUP (PQ)" ungroupEx
   testQuery "S RENAME (S# AS id)" renameEx
   testQuery "S JOIN P" joinEx
+  Data.Binary.encodeFile "test.databass" db
+  db' <- Data.Binary.decodeFile "test.databass"
+  print (db == db')

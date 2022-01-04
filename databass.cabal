@@ -71,6 +71,7 @@ executable manifesto
   build-depends:
     , aeson
     , base             <5
+    , binary
     , databass
     , foldl
     , lens

@@ -1,8 +1,13 @@
 module Databass.Blog where
 
 import Control.Monad (guard)
+import Data.Binary
+import Data.Binary.Get (isolate)
+import Data.Binary.Put (runPut)
+import qualified Data.ByteString.Lazy as BL
 import Data.Coerce (coerce)
 import Data.Function (on)
+import Data.Int (Int64)
 import Data.Kind
 import Data.List (sortBy)
 import Data.List.NonEmpty (NonEmpty (..), groupBy)
@@ -243,6 +248,7 @@ type family IntersectionCase (ordering :: Ordering) l r a as b bs where
 
 -- emptyDB :: Proxy relations -> Tuple (RelationsToDB relations)
 -- emptyDB _ = Empty
+
 class EmptyDB (relations :: [Mapping Symbol Type]) where
   emptyDB :: Proxy relations -> Tuple (RelationsToDB relations)
 
@@ -251,7 +257,7 @@ instance EmptyDB '[] where
 
 instance
   (EmptyDB relations, Ord (Tuple key)) =>
-  EmptyDB (name ::: (Relation heading key val) ': relations)
+  EmptyDB (name ::: Relation heading key val ': relations)
   where
   emptyDB (_ :: Proxy (name ::: relation ': relations)) =
     Ext (Var @name) mempty (emptyDB (Proxy @relations))
@@ -293,3 +299,18 @@ updateByKey var _ key fn db =
   let old_rel = lookp var db
       new_rel = M.adjust fn key old_rel
    in update db var new_rel
+
+instance Binary (Tuple '[]) where
+  put Empty = pure ()
+  get = pure Empty
+
+instance (Binary x, Binary (Tuple ts)) => Binary (Tuple (l ::: x ': ts)) where
+  put (Ext _ x xs) = do
+    let bytes = runPut $ put x
+    put (BL.length bytes)
+    put x
+    put xs
+  get = do
+    size :: Int64 <- get
+    x <- isolate (fromIntegral size) get
+    Ext Var x <$> get
