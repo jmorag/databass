@@ -33,7 +33,7 @@ import qualified Data.Map.Strict as M
 import Data.Type.Map hiding ((:\))
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
-import Relude hiding (Identity, Map, get, put)
+import Relude hiding (Map, get, put)
 import Unsafe.Coerce (unsafeCoerce)
 
 type Tuple = Map
@@ -200,7 +200,7 @@ type family IntersectionCase (ordering :: Ordering) l r a as b bs where
       )
 
 data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
-  Identity ::
+  TableIdentity ::
     ( (tables :! name) ~ Table heading k v
     , IsMember name (Table heading k v) tables
     , IsMember name (TableMem (Table heading k v)) (MapDB' tables)

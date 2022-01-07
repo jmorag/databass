@@ -1,17 +1,17 @@
 module Databass.MapDB where
 
 import qualified Control.Foldl as L
-import Control.Lens hiding (Empty, Identity)
+import Control.Lens hiding (Empty)
 import Data.List (partition)
 import Data.List.NonEmpty (groupBy)
 import qualified Data.Map.Strict as M
 import Data.Type.Map hiding ((:\))
 import Databass.QueryLanguage
-import Relude hiding (Identity, Map, get, put, undefined)
+import Relude hiding (Map, get, put)
 
 runQuery :: forall tables t. Query t tables -> MapDB tables -> [Tuple t]
 runQuery q mem = case q of
-  Identity name (MkTable :: Table heading k v) ->
+  TableIdentity name (MkTable :: Table heading k v) ->
     M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
   Rename v1 v2 q' -> map (quicksort . renameTuple v1 v2) $ runQuery q' mem
   Restrict pred q' -> filter pred (runQuery q' mem)

@@ -33,7 +33,7 @@ import Data.Type.Set (AsSet, Sort, type (:++))
 import qualified Databass.MapDB as MapDB
 import Databass.QueryLanguage
 import GHC.TypeLits
-import Relude hiding (Identity, Map, get, group, join, put)
+import Relude hiding (Map, get, group, join, put)
 import qualified Prelude as P
 
 -- | Intended usage is to have a named table type that you pass to 'createTable'
@@ -114,7 +114,7 @@ table ::
   , IsHeading heading k v
   ) =>
   Query heading tables
-table = Identity (Var @name) (MkTable :: Table heading k v)
+table = TableIdentity (Var @name) (MkTable :: Table heading k v)
 
 rename :: forall a b t tables. (Sortable (Rename a b t)) => Query t tables -> Query (Sort (Rename a b t)) tables
 rename = Rename (Var @a) (Var @b)
