@@ -222,3 +222,6 @@ instance
   IsLabel label (LensLike f (Tuple m) (Tuple n) t t')
   where
   fromLabel = lens (lookp (Var @label)) (`update` (Var @label))
+
+instance IsLabel label (Var label) where
+  fromLabel = Var @label
