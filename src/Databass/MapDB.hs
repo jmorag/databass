@@ -66,9 +66,9 @@ removeTable _ _ _ = submap @(MapDB' remaining)
 
 insert ::
   ( IsHeading heading k v
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Ord (Tuple k)
   ) =>
   Var name ->
@@ -79,10 +79,10 @@ insert ::
 insert var _ tuple = let (key, val) = split tuple in over (colLens' var) (M.insert key val)
 
 updateByKey ::
-  ( (MapDB' tables :! name) ~ TableMem (Table heading k v)
+  ( (MapDB' tables :! name) ~ TableMap (Table heading k v)
   , Ord (Tuple k)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   ) =>
   Var name ->
   Proxy tables ->
@@ -95,9 +95,9 @@ updateByKey var _ key fn = over (colLens' var) (M.adjust fn key)
 updateTable ::
   forall name heading k v tables.
   ( IsHeading heading k v
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Ord (Tuple k)
   ) =>
   Var name ->
@@ -113,9 +113,9 @@ updateTable var _ where_ fn mdb =
 
 deleteByKey ::
   ( IsHeading heading k v
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Ord (Tuple k)
   ) =>
   Var name ->

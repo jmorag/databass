@@ -16,7 +16,7 @@ module Databass.QueryLanguage (
   Query (..),
   MapDB,
   MapDB',
-  TableMem,
+  TableMap,
   ChangeType,
   colLens',
 ) where
@@ -203,7 +203,7 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
   TableIdentity ::
     ( (tables :! name) ~ Table heading k v
     , IsMember name (Table heading k v) tables
-    , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
+    , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
     ) =>
     Var name ->
     Table heading k v ->
@@ -274,10 +274,10 @@ type family MapDB tables where
 
 type family MapDB' tables where
   MapDB' '[] = '[]
-  MapDB' (name ::: table ': rest) = name ::: TableMem table ': MapDB' rest
+  MapDB' (name ::: table ': rest) = name ::: TableMap table ': MapDB' rest
 
-type family TableMem table where
-  TableMem (Table heading k v) = M.Map (Tuple k) (Tuple v)
+type family TableMap table where
+  TableMap (Table heading k v) = M.Map (Tuple k) (Tuple v)
 
 -- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where

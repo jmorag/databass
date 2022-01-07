@@ -54,9 +54,9 @@ initDB = MapDB.initDB (Proxy @tables)
 insert ::
   forall name tables heading k v.
   ( IsHeading heading k v
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Ord (Tuple k)
   ) =>
   Tuple heading ->
@@ -68,9 +68,9 @@ insertMany ::
   forall name tables heading k v t.
   ( IsHeading heading k v
   , Table heading k v ~ (tables :! name)
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Foldable t
   , Ord (Tuple k)
   ) =>
@@ -82,9 +82,9 @@ insertMany tuples db = foldr (insert @name @tables) db tuples
 deleteByKey ::
   forall name tables heading k v.
   ( IsHeading heading k v
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Ord (Tuple k)
   ) =>
   Tuple k ->
@@ -95,9 +95,9 @@ deleteByKey = MapDB.deleteByKey (Var @name) (Proxy @tables)
 updateTable ::
   forall name tables heading k v.
   ( IsHeading heading k v
-  , (MapDB' tables :! name) ~ TableMem (Table heading k v)
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
-  , Updatable name (TableMem (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
   , Ord (Tuple k)
   ) =>
   (Tuple heading -> Bool) ->
@@ -110,7 +110,7 @@ table ::
   forall name tables heading k v.
   ( (tables :! name) ~ Table heading k v
   , IsMember name (Table heading k v) tables
-  , IsMember name (TableMem (Table heading k v)) (MapDB' tables)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
   , IsHeading heading k v
   ) =>
   Query heading tables
