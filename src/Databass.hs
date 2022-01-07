@@ -223,5 +223,5 @@ instance
   where
   fromLabel = lens (lookp (Var @label)) (`update` (Var @label))
 
-instance IsLabel label (Var label) where
-  fromLabel = Var @label
+instance (label ~ l) => IsLabel label (Var l) where
+  fromLabel = Var @l
