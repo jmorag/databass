@@ -46,7 +46,7 @@ createTable ::
   (namedTable ~ (name ::: Table heading k v), IsHeading heading k v, Ord (Tuple k), Member name tables ~ 'False) =>
   MapDB tables ->
   MapDB ((name ::: Table heading k v) ': tables)
-createTable = MapDB.createTable (Var @name) (Proxy @tables) (MkTable :: Table heading k v)
+createTable = MapDB.createTable (Var @name) (Proxy @tables) (Proxy @k) (Proxy @v) (MkTable :: Table heading k v)
 
 initDB :: forall tables. (MapDB.InitDB tables) => MapDB tables
 initDB = MapDB.initDB (Proxy @tables)
@@ -62,7 +62,7 @@ insert ::
   Tuple heading ->
   MapDB tables ->
   MapDB tables
-insert = MapDB.insert (Var @name) (Proxy @tables)
+insert = MapDB.insert (Var @name) (Proxy @k) (Proxy @tables)
 
 insertMany ::
   forall name tables heading k v t.
@@ -77,7 +77,7 @@ insertMany ::
   t (Tuple heading) ->
   MapDB tables ->
   MapDB tables
-insertMany tuples db = foldr (insert @name @tables) db tuples
+insertMany tuples db = foldr (insert @name @tables @heading @k) db tuples
 
 deleteByKey ::
   forall name tables heading k v.
@@ -90,7 +90,7 @@ deleteByKey ::
   Tuple k ->
   MapDB tables ->
   MapDB tables
-deleteByKey = MapDB.deleteByKey (Var @name) (Proxy @tables)
+deleteByKey = MapDB.deleteByKey (Var @name) (Proxy @tables) (Proxy @v)
 
 updateTable ::
   forall name tables heading k v.
@@ -104,7 +104,7 @@ updateTable ::
   (Tuple heading -> Tuple heading) ->
   MapDB tables ->
   MapDB tables
-updateTable = MapDB.updateTable (Var @name) (Proxy @tables)
+updateTable = MapDB.updateTable (Var @name) (Proxy @tables) (Proxy @k) (Proxy @heading)
 
 table ::
   forall name tables heading k v.
@@ -114,7 +114,7 @@ table ::
   , IsHeading heading k v
   ) =>
   Query heading tables
-table = TableIdentity (Var @name) (MkTable :: Table heading k v)
+table = TableIdentity Proxy (Var @name) (MkTable :: Table heading k v)
 
 rename :: forall a b t tables. (Sortable (Rename a b t)) => Query t tables -> Query (Sort (Rename a b t)) tables
 rename = Rename (Var @a) (Var @b)

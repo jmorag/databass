@@ -1,3 +1,5 @@
+{-# LANGUAGE TypeFamilyDependencies #-}
+{-# LANGUAGE FunctionalDependencies #-}
 -- | Embedding of relational model as per chapter 2 of third manifesto
 module Databass.QueryLanguage (
   Tuple,
@@ -19,6 +21,7 @@ module Databass.QueryLanguage (
   TableMap,
   ChangeType,
   colLens',
+  IsTableMap(..),
 ) where
 
 import qualified Control.Foldl as L
@@ -30,6 +33,7 @@ import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as IM
 import Data.Type.Map hiding ((:\))
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
@@ -128,6 +132,7 @@ type IsHeading heading k v =
   , IsMap heading
   , IsMap k
   , IsMap v
+  , IsTableMap (TableMap (Table heading k v)) k v
   )
 
 data Table heading k v = (IsHeading heading k v) => MkTable
@@ -204,7 +209,9 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     ( (tables :! name) ~ Table heading k v
     , IsMember name (Table heading k v) tables
     , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+    , IsTableMap (TableMap (Table heading k v)) k v
     ) =>
+    Proxy (TableMap (Table heading k v)) ->
     Var name ->
     Table heading k v ->
     Query heading tables
@@ -277,7 +284,31 @@ type family MapDB' tables where
   MapDB' (name ::: table ': rest) = name ::: TableMap table ': MapDB' rest
 
 type family TableMap table where
+  TableMap (Table heading '[label ::: Int] v) = IntMap (Tuple v)
   TableMap (Table heading k v) = M.Map (Tuple k) (Tuple v)
+
+class IsTableMap map k v | map -> v where
+  enumerate :: map -> [(Tuple k, Tuple v)]
+  insertTuple :: Tuple k -> Tuple v -> map -> map
+  adjust :: (Tuple v -> Tuple v) -> Tuple k -> map -> map
+  fromList :: [(Tuple k, Tuple v)] -> map
+  delete :: Tuple k -> map -> map
+
+instance Ord (Tuple k) => IsTableMap (M.Map (Tuple k) (Tuple v)) k v where
+  enumerate :: M.Map (Tuple k) (Tuple v) -> [(Tuple k, Tuple v)]
+  enumerate = M.toList
+  insertTuple = M.insert
+  adjust = M.adjust
+  fromList = M.fromList
+  delete = M.delete
+
+instance IsTableMap (IM.IntMap (Tuple v)) '[label ::: Int] v where
+  enumerate :: IntMap (Tuple v) -> [(Tuple '[label ::: Int], Tuple v)]
+  enumerate = fmap (\(key, val) -> (Ext Var key Empty, val)) . IM.toList
+  insertTuple (Ext _ key Empty) = IM.insert key
+  adjust fn (Ext _ key Empty) = IM.adjust fn key
+  fromList = IM.fromList . map (\(Ext _ key Empty, val) -> (key, val))
+  delete (Ext _ key Empty) = IM.delete key
 
 -- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where

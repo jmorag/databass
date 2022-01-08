@@ -2,6 +2,7 @@ module Databass.MapDB where
 
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty)
+import qualified Data.IntMap.Strict as IM
 import Data.List (partition)
 import Data.List.NonEmpty (groupBy)
 import qualified Data.Map.Strict as M
@@ -11,8 +12,8 @@ import Relude hiding (Map, get, put)
 
 runQuery :: forall tables t. Query t tables -> MapDB tables -> [Tuple t]
 runQuery q mem = case q of
-  TableIdentity name (MkTable :: Table heading k v) ->
-    M.toList (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
+  TableIdentity (_ :: Proxy map) name (MkTable :: Table heading k v) ->
+    (enumerate @map) (lookp name mem) & map \(k, v) -> (k :: Tuple k) `union` (v :: Tuple v)
   Rename v1 v2 q' -> map (quicksort . renameTuple v1 v2) $ runQuery q' mem
   Restrict pred q' -> filter pred (runQuery q' mem)
   Project q' -> map submap (runQuery q' mem)
@@ -46,13 +47,18 @@ runQuery q mem = case q of
        in nested & map \group -> quicksort (append group rest)
 
 createTable ::
-  (IsHeading heading k v, Ord (Tuple k), Member name tables ~ 'False) =>
+  ( IsHeading heading k v
+  , Ord (Tuple k)
+  , Member name tables ~ 'False
+  ) =>
   Var name ->
   Proxy tables ->
+  Proxy k ->
+  Proxy v ->
   Table heading k v ->
   MapDB tables ->
   MapDB ((name ::: Table heading k v) ': tables)
-createTable var Proxy MkTable = Ext var mempty
+createTable var _ (_ :: Proxy k) (_ :: Proxy v) (MkTable :: Table heading k v) = Ext var (Databass.QueryLanguage.fromList @(TableMap (Table heading k v)) @k @v [])
 
 removeTable ::
   forall name tables remaining.
@@ -72,28 +78,32 @@ insert ::
   , Ord (Tuple k)
   ) =>
   Var name ->
+  Proxy k ->
   Proxy tables ->
   Tuple heading ->
   MapDB tables ->
   MapDB tables
-insert var _ tuple = let (key, val) = split tuple in over (colLens' var) (M.insert key val)
+insert var (_ :: Proxy k) _ tuple =
+  let (key :: Tuple k, val) = split tuple
+   in over (colLens' var) (Databass.QueryLanguage.insertTuple key val)
 
 updateByKey ::
-  ( (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  ( IsHeading heading k v
   , Ord (Tuple k)
   , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
   , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
   ) =>
   Var name ->
   Proxy tables ->
+  Proxy heading ->
   Tuple k ->
   (Tuple v -> Tuple v) ->
   MapDB tables ->
   MapDB tables
-updateByKey var _ key fn = over (colLens' var) (M.adjust fn key)
+updateByKey var _ _ key fn = over (colLens' var) (adjust fn key)
 
 updateTable ::
-  forall name heading k v tables.
   ( IsHeading heading k v
   , (MapDB' tables :! name) ~ TableMap (Table heading k v)
   , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
@@ -102,14 +112,16 @@ updateTable ::
   ) =>
   Var name ->
   Proxy tables ->
+  Proxy k ->
+  Proxy heading ->
   (Tuple heading -> Bool) ->
   (Tuple heading -> Tuple heading) ->
   MapDB tables ->
   MapDB tables
-updateTable var _ where_ fn mdb =
-  let (elems :: [Tuple heading]) = map (uncurry union) $ M.toList (mdb ^. colLens' var)
-      elems' = over (traversed . filtered where_) fn elems
-   in set (colLens' var) (M.fromList (map split elems')) mdb
+updateTable var _ (_ :: Proxy k) (_ :: Proxy heading) where_ fn mdb =
+  let (elems :: [Tuple heading]) = map (uncurry (union @k)) $ enumerate (mdb ^. colLens' var)
+      (elems' :: [Tuple heading]) = over (traversed . filtered where_) fn elems
+   in set (colLens' var) (Databass.QueryLanguage.fromList @_ @k (map split elems')) mdb
 
 deleteByKey ::
   ( IsHeading heading k v
@@ -120,10 +132,11 @@ deleteByKey ::
   ) =>
   Var name ->
   Proxy tables ->
+  Proxy v ->
   Tuple k ->
   MapDB tables ->
   MapDB tables
-deleteByKey var _ k = over (colLens' var) (M.delete k)
+deleteByKey var _ _ k = over (colLens' var) (delete k)
 
 class InitDB tables where
   initDB :: Proxy tables -> MapDB tables
@@ -136,4 +149,4 @@ instance
   InitDB (name ::: Table heading k v ': tables)
   where
   initDB (_ :: Proxy (name ::: Table heading k v ': ts)) =
-    createTable (Var @name) (Proxy @ts) MkTable (initDB (Proxy @ts))
+    createTable (Var @name) (Proxy @ts) (Proxy @k) (Proxy @v) MkTable (initDB (Proxy @ts))
