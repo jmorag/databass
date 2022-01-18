@@ -293,6 +293,7 @@ class IsTableMap map k v | map -> v where
   adjust :: (Tuple v -> Tuple v) -> Tuple k -> map -> map
   fromList :: [(Tuple k, Tuple v)] -> map
   delete :: Tuple k -> map -> map
+  lookupMax :: map -> Maybe (Tuple k, Tuple v)
 
 instance Ord (Tuple k) => IsTableMap (M.Map (Tuple k) (Tuple v)) k v where
   enumerate :: M.Map (Tuple k) (Tuple v) -> [(Tuple k, Tuple v)]
@@ -301,6 +302,7 @@ instance Ord (Tuple k) => IsTableMap (M.Map (Tuple k) (Tuple v)) k v where
   adjust = M.adjust
   fromList = M.fromList
   delete = M.delete
+  lookupMax = M.lookupMax
 
 instance IsTableMap (IM.IntMap (Tuple v)) '[label ::: Int] v where
   enumerate :: IntMap (Tuple v) -> [(Tuple '[label ::: Int], Tuple v)]
@@ -309,6 +311,7 @@ instance IsTableMap (IM.IntMap (Tuple v)) '[label ::: Int] v where
   adjust fn (Ext _ key Empty) = IM.adjust fn key
   fromList = IM.fromList . map (\(Ext _ key Empty, val) -> (key, val))
   delete (Ext _ key Empty) = IM.delete key
+  lookupMax m = IM.lookupMax m <&> \(k, v) -> (Ext Var k Empty, v)
 
 -- | Update the type at label l
 type family ChangeType (l :: Symbol) (t' :: Type) (t :: [Mapping Symbol Type]) where

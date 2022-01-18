@@ -86,7 +86,7 @@ p :: Query _ Tables
 p = table @"parts"
 
 sp :: Query _ Tables
-sp = table @"suppliers-parts" @Tables
+sp = table @"suppliers-parts"
 
 fancyQuery :: Query _ Tables
 fancyQuery = s & project @'["CITY", "STATUS"] & restrict (\t -> t ^. col @"STATUS" < 30)

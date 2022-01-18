@@ -79,6 +79,42 @@ insertMany ::
   MapDB tables
 insertMany tuples db = foldr (insert @name @tables @heading @k) db tuples
 
+insertIncreasing ::
+  forall name tables heading k v t.
+  ( IsHeading heading k v
+  , Table heading k v ~ (tables :! name)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , Foldable t
+  , Ord (Tuple k)
+  , Enum (Tuple k)
+  , Bounded (Tuple k)
+  ) =>
+  Tuple v ->
+  MapDB tables ->
+  MapDB tables
+insertIncreasing = MapDB.insertIncreasing (Var @name) (Proxy @k) (Proxy @tables)
+
+insertManyIncreasing ::
+  forall name tables heading k v t.
+  ( IsHeading heading k v
+  , Table heading k v ~ (tables :! name)
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , Foldable t
+  , Ord (Tuple k)
+  , Enum (Tuple k)
+  , Bounded (Tuple k)
+  , Foldable t
+  ) =>
+  t (Tuple v) ->
+  MapDB tables ->
+  MapDB tables
+insertManyIncreasing vals db =
+  foldr (MapDB.insertIncreasing (Var @name) (Proxy @k) (Proxy @tables)) db vals
+
 deleteByKey ::
   forall name tables heading k v.
   ( IsHeading heading k v

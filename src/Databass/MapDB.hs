@@ -87,6 +87,27 @@ insert var (_ :: Proxy k) _ tuple =
   let (key :: Tuple k, val) = split tuple
    in over (colLens' var) (Databass.QueryLanguage.insertTuple key val)
 
+insertIncreasing ::
+  ( IsHeading heading k v
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , Ord (Tuple k)
+  , Enum (Tuple k)
+  , Bounded (Tuple k)
+  ) =>
+  Var name ->
+  Proxy k ->
+  Proxy tables ->
+  Tuple v ->
+  MapDB tables ->
+  MapDB tables
+insertIncreasing var (_ :: Proxy k) _ val db =
+  let key :: Tuple k = case lookupMax @_ @k (db ^. colLens' var) of
+        Nothing -> minBound
+        Just (key', _) -> succ key'
+   in over (colLens' var) (Databass.QueryLanguage.insertTuple key val) db
+
 updateByKey ::
   ( IsHeading heading k v
   , Ord (Tuple k)
