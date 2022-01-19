@@ -16,10 +16,15 @@ module Databass (
   project,
   join,
   (><),
+  qunion,
+  difference,
+  intersection,
+  (\\),
   extend,
   group,
   ungroup,
   summarize,
+  summarize',
   (<|),
   col,
   runQuery,
@@ -182,6 +187,16 @@ join
 join = Join (Proxy @t'_rest) (Proxy @t_rest)
 (><) = Join (Proxy @t'_rest) (Proxy @t_rest)
 
+qunion :: Eq (Tuple t) => Query t tables -> Query t tables -> Query t tables
+qunion = QueryUnion
+
+intersection :: Eq (Tuple t) => Query t tables -> Query t tables -> Query t tables
+intersection = Intersection
+
+difference, (\\) :: Eq (Tuple t) => Query t tables -> Query t tables -> Query t tables
+difference = Difference
+(\\) = Difference
+
 extend ::
   forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
   (Member l t ~ 'False, Sortable (l ::: a ': t)) =>
@@ -198,6 +213,15 @@ summarize ::
   Query t tables ->
   Query (Sort (l ::: a ': t')) tables
 summarize = Summarize (Var @l)
+
+-- | 'summarize' but the projection is on the same initial query
+summarize' ::
+  forall l ls a t t' tables.
+  (t' ~ (t :!! ls), Submap t' t, Member l t' ~ 'False, Eq (Tuple t'), Sortable (l ::: a ': t')) =>
+  L.Fold (Tuple t) a ->
+  Query t tables ->
+  Query (Sort (l ::: a ': t')) tables
+summarize' folder q = Summarize (Var @l) (Project @t' q) folder q
 
 group ::
   forall name (attrs :: [Symbol]) t t' tables grouped rest.

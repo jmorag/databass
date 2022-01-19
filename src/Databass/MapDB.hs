@@ -3,7 +3,7 @@ module Databass.MapDB where
 import qualified Control.Foldl as L
 import Control.Lens hiding (Empty)
 import qualified Data.IntMap.Strict as IM
-import Data.List (partition)
+import qualified Data.List as List
 import Data.List.NonEmpty (groupBy)
 import qualified Data.Map.Strict as M
 import Data.Type.Map hiding ((:\))
@@ -26,15 +26,18 @@ runQuery q mem = case q of
         (r_common, r_rest) = split @(Intersection t_l t_r) @t_r_rest r
     guard (l_common == r_common)
     pure (quicksort $ append l_common (append l_rest r_rest))
+  QueryUnion q1 q2 -> runQuery q1 mem `List.union` runQuery q2 mem
+  Intersection q1 q2 -> runQuery q1 mem `List.intersect` runQuery q2 mem
+  Difference q1 q2 -> runQuery q1 mem List.\\ runQuery q2 mem
   Extend var f q -> runQuery q mem & map \tuple -> quicksort (Ext var (f tuple) tuple)
   Summarize var projection folder q ->
-    let proj = runQuery projection mem
+    let proj = List.nub $ runQuery projection mem
         tuples = runQuery q mem
      in go proj tuples
     where
       go [] _ = []
       go (p : ps) tuples =
-        let (these, rest) = partition (\tuple -> p == submap tuple) tuples
+        let (these, rest) = List.partition (\tuple -> p == submap tuple) tuples
          in quicksort (Ext var (L.fold folder these) p) : go ps rest
   Group var (_ :: Proxy grouped) (_ :: Proxy rest) q ->
     let splits = runQuery q mem & map (split @grouped @rest) & sortWith snd

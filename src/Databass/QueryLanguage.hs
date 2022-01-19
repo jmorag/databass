@@ -1,5 +1,6 @@
-{-# LANGUAGE TypeFamilyDependencies #-}
 {-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
+
 -- | Embedding of relational model as per chapter 2 of third manifesto
 module Databass.QueryLanguage (
   Tuple,
@@ -21,7 +22,7 @@ module Databass.QueryLanguage (
   TableMap,
   ChangeType,
   colLens',
-  IsTableMap(..),
+  IsTableMap (..),
 ) where
 
 import qualified Control.Foldl as L
@@ -32,8 +33,8 @@ import Data.Binary
 import Data.Binary.Get (getInt64le, isolate)
 import Data.Binary.Put
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Map.Strict as M
 import qualified Data.IntMap.Strict as IM
+import qualified Data.Map.Strict as M
 import Data.Type.Map hiding ((:\))
 import Data.Type.Set (AsSet, Sort, type (:++))
 import GHC.TypeLits
@@ -236,9 +237,10 @@ data Query (t :: [Mapping Symbol Type]) (tables :: [Mapping Symbol Type]) where
     Query t' tables ->
     Query t tables ->
     Query (Sort (common :++ (t'_rest :++ t_rest))) tables
-  -- Union :: Query t tables -> Query t tables -> Query t tables
-  -- Intersection :: Query t tables -> Query t tables -> Query t tables
-  -- Difference :: Query t tables -> Query t tables -> Query t tables
+  -- Name to not conflict with Data.Type.Map.Union
+  QueryUnion :: (Eq (Tuple t)) => Query t tables -> Query t tables -> Query t tables
+  Intersection :: (Eq (Tuple t)) => Query t tables -> Query t tables -> Query t tables
+  Difference :: (Eq (Tuple t)) => Query t tables -> Query t tables -> Query t tables
   Extend ::
     forall (l :: Symbol) (a :: Type) (t :: [Mapping Symbol Type]) tables.
     (Member l t ~ 'False, Sortable (l ::: a ': t)) =>

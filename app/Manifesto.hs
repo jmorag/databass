@@ -95,6 +95,12 @@ extendEx = s & extend @"TRIPLE" (\t -> t ^. col @"STATUS" * 3)
 
 summarizeEx = sp & summarize @"P_COUNT" (project @'["S#"] s) L.length
 
+summarizeEx2 =
+  s
+    & summarize @"AVG_STATUS"
+      (project @'["CITY"] s)
+      (L.premap (fromIntegral . view (col @"STATUS")) L.mean)
+
 projectEx = s & project @'["S#"]
 
 groupEx = sp & group @"PQ" @'["P#", "QTY"]
@@ -164,6 +170,8 @@ main = do
   testQuery "S" s
   testQuery "P" p
   testQuery "EXTEND s ADD (3 * STATUS as TRIPLE)" extendEx
+  testQuery "SUMMARIZE SP PER ( S { S# } ) ADD ( COUNT ( ) AS P_COUNT )" summarizeEx
+  testQuery "SUMMARIZE S PER ( S { CITY } ) ADD ( AVG ( STATUS ) AS AVG_STATUS )" summarizeEx2
   testQuery "S { S# }" projectEx
   testQuery "SP GROUP ({ P#, QTY } AS PQ)" groupEx
   testQuery "SPQ UNGROUP (PQ)" ungroupEx

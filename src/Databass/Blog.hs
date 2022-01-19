@@ -10,6 +10,7 @@ import Data.Function (on)
 import Data.Int (Int64)
 import Data.Kind
 import Data.List (sortBy)
+import qualified Data.List as List
 import Data.List.NonEmpty (NonEmpty (..), groupBy)
 import qualified Data.Map.Strict as M
 import Data.Ord (comparing)
@@ -168,6 +169,9 @@ data Query (t :: [Mapping Symbol Type]) (relations :: [Mapping Symbol Type]) whe
     Proxy rest ->
     Query t relations ->
     Query (Sort (nested :++ rest)) relations
+  RelationUnion :: (Eq (Tuple t)) => Query t relations -> Query t relations -> Query t relations
+  Intersection :: (Eq (Tuple t)) => Query t relations -> Query t relations -> Query t relations
+  Difference :: (Eq (Tuple t)) => Query t relations -> Query t relations -> Query t relations
 
 runQuery :: Query t relations -> Tuple (RelationsToDB relations) -> [Tuple t]
 runQuery q db = case q of
@@ -201,6 +205,9 @@ runQuery q db = case q of
            in map (\group -> quicksort (append group rest)) grouped
       )
       (runQuery q db)
+  RelationUnion q1 q2 -> runQuery q1 db `List.union` runQuery q2 db
+  Intersection q1 q2 -> runQuery q1 db `List.intersect` runQuery q2 db
+  Difference q1 q2 -> runQuery q1 db List.\\ runQuery q2 db
 
 type family Rename (x :: Symbol) (y :: Symbol) (relation :: [Mapping Symbol Type]) where
   Rename a b '[] = '[]
