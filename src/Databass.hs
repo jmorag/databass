@@ -8,6 +8,8 @@ module Databass (
   initDB,
   insert,
   insertMany,
+  insertWithDefault,
+  insertManyWithDefault,
   deleteByKey,
   updateTable,
   table,
@@ -26,6 +28,7 @@ module Databass (
   summarize,
   summarize',
   (<|),
+  t,
   col,
   runQuery,
 ) where
@@ -69,6 +72,23 @@ insert ::
   MapDB tables
 insert = MapDB.insert (Var @name) (Proxy @k) (Proxy @tables)
 
+insertWithDefault ::
+  forall name cols tables heading k v.
+  ( IsHeading heading k v
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , Ord (Tuple k)
+  , Unionable (heading :!! cols) (heading :\\ cols)
+  , Union (heading :!! cols) (heading :\\ cols) ~ heading
+  , tables :! name ~ Table heading k v
+  ) =>
+  Tuple (heading :!! cols) ->
+  Tuple (heading :\\ cols) ->
+  MapDB tables ->
+  MapDB tables
+insertWithDefault t def = MapDB.insert (Var @name) (Proxy @k) (Proxy @tables) (t `union` def)
+
 insertMany ::
   forall name tables heading k v t.
   ( IsHeading heading k v
@@ -83,6 +103,25 @@ insertMany ::
   MapDB tables ->
   MapDB tables
 insertMany tuples db = foldr (insert @name @tables @heading @k) db tuples
+
+insertManyWithDefault ::
+  forall name cols tables heading k v t.
+  ( IsHeading heading k v
+  , (MapDB' tables :! name) ~ TableMap (Table heading k v)
+  , IsMember name (TableMap (Table heading k v)) (MapDB' tables)
+  , Updatable name (TableMap (Table heading k v)) (MapDB' tables) (MapDB' tables)
+  , Ord (Tuple k)
+  , Unionable (heading :!! cols) (heading :\\ cols)
+  , Union (heading :!! cols) (heading :\\ cols) ~ heading
+  , Foldable t
+  , tables :! name ~ Table heading k v
+  ) =>
+  Tuple (heading :\\ cols) ->
+  t (Tuple (heading :!! cols)) ->
+  MapDB tables ->
+  MapDB tables
+insertManyWithDefault def ts db =
+  foldr (\t -> insertWithDefault @name @cols @tables @_ @k t def) db ts
 
 insertIncreasing ::
   forall name tables heading k v t.
@@ -251,6 +290,14 @@ ungroup = Ungroup (Var @l) (Proxy @nested) (Proxy @rest)
 
 infixr 5 <|
 
+-- | 't' is meant to be used with '<|'
+--
+-- @
+-- t @'["id", "age"] (1 <| 25 <| Empty) == asMap $ Ext (Var @"id") 1 $ Ext (Var @"age") 25 Empty
+-- @
+t :: forall labels s . (Sortable s, Nubable (Sort s), GetLabels s ~ labels) => Map s -> Map (AsMap s)
+t = asMap
+
 -- | Lens for getting a column out of a tuple
 col ::
   forall (label :: Symbol) (m :: [Mapping Symbol Type]) (n :: [Mapping Symbol Type]) (t :: Type) (t' :: Type).
@@ -261,13 +308,6 @@ col ::
   ) =>
   Lens (Tuple m) (Tuple n) t t'
 col = lens (lookp (Var @label)) (`update` (Var @label))
-
-{- TODO: investigate a quasiquoter for creating tuples
-[row_auto_incr S# start 1|SNAME STATUS CITY
-     1  Smith 20     London
-     2  Jones Blake
-|]
--}
 
 runQuery :: MapDB tables -> Query t tables -> [Tuple t]
 runQuery = flip MapDB.runQuery

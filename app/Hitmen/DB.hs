@@ -8,38 +8,20 @@ import Data.Type.Set (Sort, type (:++))
 import Databass
 import Relude
 
-type family Timed heading where
-  Timed heading = heading :++ '["created_at" ::: UTCTime, "updated_at" ::: UTCTime]
+type TimeStamps = '["created_at" ::: UTCTime, "updated_at" ::: UTCTime]
 
-type Handler =
-  '[ "id" ::: Int
-   , "codename" ::: Text
-   , "created_at" ::: UTCTime
-   , "updated_at" ::: UTCTime
-   ]
+type Handler = '["id" ::: Int, "codename" ::: Text] :++ TimeStamps
 
-type Hitman =
-  '[ "id" ::: Int
-   , "codename" ::: Text
-   , "handler_id" ::: Int
-   , "created_at" ::: UTCTime
-   , "updated_at" ::: UTCTime
-   ]
+type Hitman = '["id" ::: Int, "codename" ::: Text, "handler_id" ::: Int] :++ TimeStamps
 
-type PursuingMark =
-  '[ "hitman_id" ::: Int
-   , "mark_id" ::: Int
-   , "created_at" ::: UTCTime
-   , "updated_at" ::: UTCTime
-   ]
+type PursuingMark = '["hitman_id" ::: Int, "mark_id" ::: Int] :++ TimeStamps
 
 type ErasedMark =
   '[ "hitman_id" ::: Int
    , "mark_id" ::: Int
    , "awarded_bounty" ::: Int
-   , "created_at" ::: UTCTime
-   , "updated_at" ::: UTCTime
    ]
+    :++ TimeStamps
 
 type Mark =
   '[ "id" ::: Int
@@ -47,9 +29,8 @@ type Mark =
    , "first_name" ::: Text
    , "last_name" ::: Text
    , "description" ::: Maybe Text
-   , "created_at" ::: UTCTime
-   , "updated_at" ::: UTCTime
    ]
+    :++ TimeStamps
 
 type Schema =
   Sort
@@ -63,32 +44,31 @@ type Schema =
 makeDB :: IO (MapDB Schema)
 makeDB = do
   now <- getCurrentTime
+  let defaultTimeStamps :: Tuple TimeStamps
+      defaultTimeStamps = now <| now <| Empty
   pure $
     initDB @Schema
-      & insertMany @"handlers" @Schema
-        ( map
-            (asMap @Handler)
-            [ 1 <| "Olive" <| now <| now <| Empty
-            , 2 <| "Pallas" <| now <| now <| Empty
-            ]
-        )
-      & insertMany @"hitmen" @Schema
-        ( map
-            (asMap @Hitman)
-            [ 1 <| "Callaird" <| 1 <| now <| now <| Empty
-            , 2 <| "Bomois" <| 1 <| now <| now <| Empty
-            , 3 <| "Dune" <| 2 <| now <| now <| Empty
-            ]
-        )
-      & insertMany @"marks" @Schema
-        ( map
-            (asMap @Mark)
-            [ 1 <| 25000 <| "John" <| "Tosti" <| Nothing <| now <| now <| Empty
-            , 2 <| 50000 <| "Macie" <| "Jordan" <| Nothing <| now <| now <| Empty
-            , 3 <| 33000 <| "Sal" <| "Aspot" <| Nothing <| now <| now <| Empty
-            , 4 <| 10000 <| "Lars" <| "Andersen" <| Nothing <| now <| now <| Empty
-            ]
-        )
+      & insertManyWithDefault @"handlers" @'["id", "codename"] @Schema
+        defaultTimeStamps
+        [ 1 <| "Olive" <| Empty
+        , 2 <| "Pallas" <| Empty
+        ]
+      & insertManyWithDefault @"hitmen" @'["id", "codename", "handler_id"] @Schema
+        defaultTimeStamps
+        [ 1 <| "Callaird" <| 1 <| Empty
+        , 2 <| "Bomois" <| 1 <| Empty
+        , 3 <| "Dune" <| 2 <| Empty
+        ]
+      & insertManyWithDefault
+        @"marks"
+        @'["id", "list_bounty", "first_name", "last_name"]
+        @Schema
+        (t @'["description", "created_at", "updated_at"] (Nothing <| now <| now <| Empty))
+        [ 1 <| 25000 <| "John" <| "Tosti" <| Empty
+        , 2 <| 50000 <| "Macie" <| "Jordan" <| Empty
+        , 3 <| 33000 <| "Sal" <| "Aspot" <| Empty
+        , 4 <| 10000 <| "Lars" <| "Andersen" <| Empty
+        ]
       & insertMany @"pursuing_marks" @Schema
         ( map
             (asMap @PursuingMark)

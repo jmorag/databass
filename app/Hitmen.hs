@@ -45,11 +45,28 @@ totalBounties =
       (project @'["id"] (table @"hitmen") & rename @"id" @"hitman_id")
       (L.premap (view #awarded_bounty) L.sum)
 
+totalBounties' :: Query _ Schema
+totalBounties' =
+  table @"erased_marks"
+    & summarize' @"total_bounty" @'["hitman_id"]
+      (L.premap (view #awarded_bounty) L.sum)
+
 totalBounty :: Int -> Query _ Schema
 totalBounty hitmanId = totalBounties & restrict (\m -> m ^. #hitman_id == hitmanId)
 
 latestKills :: Query _ Schema
 latestKills =
+  table @"erased_marks"
+    & summarize @"latest_kill"
+      (table @"hitmen" & project @'["id"] & rename @"id" @"hitman_id")
+      (L.premap (view #created_at) L.maximum)
+    -- to get the mark ids as well
+    & join (table @"erased_marks")
+    & restrict (\mark -> (mark ^. #latest_kill) == Just (mark ^. #created_at))
+    -- & removeTimeStamps
+
+latestKills' :: Query _ Schema
+latestKills' =
   table @"erased_marks"
     & summarize' @"latest_kill" @'["hitman_id"]
       (L.premap (view #created_at) L.maximum)
@@ -64,11 +81,18 @@ singlePursuer =
 
 opportunity :: Query _ Schema
 opportunity =
-  (table @"erased_marks" & rename @"hitman_id" @"erased_hitman_id" & project @'["erased_hitman_id", "mark_id"])
-    & join (table @"pursuing_marks" & rename @"hitman_id" @"pursuing_hitman_id" & project @'["mark_id", "pursuing_hitman_id"])
+  (table @"erased_marks" & rename @"hitman_id" @"erased_hitman_id" & removeTimeStamps)
+    & join (table @"pursuing_marks" & rename @"hitman_id" @"pursuing_hitman_id" & removeTimeStamps)
     & restrict (\m -> m ^. #erased_hitman_id /= m ^. #pursuing_hitman_id)
     & project @'["mark_id"]
     & join (table @"marks" & rename @"id" @"mark_id")
+
+removeTimeStamps ::
+  forall t t'.
+  (Submap TimeStamps t, Submap t' t, t :\\ GetLabels TimeStamps ~ t', t :!! GetLabels t' ~ t') =>
+  Query t Schema ->
+  Query t' Schema
+removeTimeStamps q = project @(GetLabels t') q
 
 main :: IO ()
 main = do
@@ -81,7 +105,9 @@ main = do
   query "get all marks that have been erased since a given date (2018-08-01)" (erasedSince (UTCTime (read "2018-08-01") 0))
   query "get all marks that have been erased since a given date (2018-08-01) by Callaird" (erasedSinceBy (UTCTime (read "2018-08-01") 0) 1)
   query "get the total bounty awarded to each hitman" totalBounties
+  query "get the total bounty awarded to each hitman (short summarize form)" totalBounties'
   query "get the total bounty awarded to a particular hitman" (totalBounty 1)
   query "get each hitman's latest kill" latestKills
+  query "get each hitman's latest kill (short summarize form)" latestKills'
   query "get all the active marks that have only a single pursuer" singlePursuer
   query "get all the marks of opportunity" opportunity
