@@ -2,5 +2,13 @@ packages: .
 
 source-repository-package
     type: git
+    -- current main upstream
+    -- time output
+    -- cabal run hitmen > b340c822bc25e75d81114327dd9a9161943d9111-out.txt  111.82s user 5.57s system 96% cpu 2:01.38 total
+    -- location: https://github.com/dorchard/type-level-sets
+    -- tag: b340c822bc25e75d81114327dd9a9161943d9111
+    -- better filter implementation
+    -- time output
+    -- cabal run hitmen > 1617525181eb4214ea9b65343af4351e5c07d9f5-out.txt  22.38s user 1.09s system 93% cpu 25.175 total
     location: https://github.com/jmorag/type-level-sets
-    tag: 5ca8df2dc3fdc92f123064cf621ce0668cd9e507
+    tag: 1617525181eb4214ea9b65343af4351e5c07d9f5
